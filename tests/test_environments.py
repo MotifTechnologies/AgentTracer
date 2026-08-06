@@ -14,7 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from agent_tracer.config.schema import ConfigError, EnvironmentConfig
-from agent_tracer.environments import BUILTIN, _load, describe
+from agent_tracer.environments import BUILTIN, _load, describe, from_env, resolve
 from agent_tracer.mcp.discovery import SANDBOX_ENV_VARS, sandbox_env
 
 
@@ -102,3 +102,37 @@ class TestSandboxEnv:
 
         assert out["AGENT_TRACER_SANDBOX_ID"] == "abc123"
         assert out["AGENT_TRACER_WORKDIR"] == "/workspace"
+
+
+class TestFromEnv:
+    """The server side of the contract: reading back what the runner wrote."""
+
+    def test_it_reads_what_sandbox_env_wrote(self):
+        provider = SimpleNamespace(temp_dir="/tmp/local_exec_env_x")
+        cfg = _cfg(type="local", working_dir="/workspace")
+        written = sandbox_env(env_type=cfg.type, options=cfg.options, **describe(cfg, provider))
+
+        _access, workdir = from_env(written)
+
+        assert workdir == "/tmp/local_exec_env_x"
+
+    def test_options_arrive_as_the_dict_they_were_sent_as(self):
+        """They cross as a JSON string and are handed to `attach` untouched."""
+        written = sandbox_env(env_type="local", options={"user": "someone"})
+
+        assert written["AGENT_TRACER_OPTIONS"] == '{"user": "someone"}'
+        assert from_env(written)[1]  # parses rather than raising
+
+    def test_no_description_means_local_and_this_directory(self):
+        """So a server can be run by hand — its smoke test depends on this."""
+        import os
+
+        access, workdir = from_env({})
+
+        assert workdir == os.getcwd()
+        assert access.exec("true")[0] == 0
+
+    def test_resolve_leaves_absolute_paths_alone(self):
+        assert resolve("data.csv", "/work") == "/work/data.csv"
+        assert resolve("/etc/hosts", "/work") == "/etc/hosts"
+        assert resolve("data.csv", "/work/") == "/work/data.csv"

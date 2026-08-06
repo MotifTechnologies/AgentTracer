@@ -21,20 +21,13 @@ backend: a sandbox installed as a plugin then works here with no change to this
 file, which is the point of the registry.
 """
 
-import json
-import os
 import shlex
 
 from mcp.server import MCPServer
 
-from agent_tracer.environments import attach
+from agent_tracer.environments import from_env, resolve
 
 mcp = MCPServer(name="soffice", version="0.1.0")
-
-ENV_TYPE = os.environ.get("AGENT_TRACER_ENV_TYPE", "local")
-SANDBOX_ID = os.environ.get("AGENT_TRACER_SANDBOX_ID", "")
-WORKDIR = os.environ.get("AGENT_TRACER_WORKDIR", "/home/user")
-OPTIONS = json.loads(os.environ.get("AGENT_TRACER_OPTIONS", "{}"))
 
 DEFAULT_TIMEOUT_S = 120
 
@@ -50,29 +43,29 @@ SUPPORTED_TARGET_FORMATS = frozenset(
 )  # fmt: skip
 
 
-_ACCESS = None
+_SANDBOX = None
 
 
 def _sandbox():
-    """Access to the sandbox, opened once and reused across calls.
+    """The sandbox and its working directory, opened once and reused.
 
     Deferred rather than opened at import: a backend may hold a connection, and
     a server that is started but never called should not cost one.
     """
-    global _ACCESS
-    if _ACCESS is None:
-        _ACCESS = attach(ENV_TYPE, SANDBOX_ID, OPTIONS)
-    return _ACCESS
+    global _SANDBOX
+    if _SANDBOX is None:
+        _SANDBOX = from_env()
+    return _SANDBOX
 
 
 def _run(command: str, timeout_s: int) -> tuple[int, str, str]:
     """Run a shell command where the agent's files are."""
-    return _sandbox().exec(command, timeout_s=timeout_s)
+    return _sandbox()[0].exec(command, timeout_s=timeout_s)
 
 
 def _abs(path: str) -> str:
     """Relative paths resolve against the agent's working directory."""
-    return path if path.startswith("/") else f"{WORKDIR.rstrip('/')}/{path}"
+    return resolve(path, _sandbox()[1])
 
 
 def _convert(source: str, to_format: str, out_dir: str, timeout_s: int) -> str:

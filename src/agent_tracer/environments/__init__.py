@@ -22,6 +22,7 @@ tools can follow it.
 
 from __future__ import annotations
 
+import json
 from importlib.metadata import entry_points
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
@@ -101,3 +102,32 @@ def attach(env_type: str, sandbox_id: str, options: dict[str, str] | None = None
             ignores it.
     """
     return _load(env_type).attach(sandbox_id, options or {})
+
+
+def from_env(environ: dict[str, str] | None = None) -> tuple[SandboxAccess, str]:
+    """Attach to the sandbox described in the environment.
+
+    The counterpart to `mcp.discovery.sandbox_env`: the runner writes the
+    description onto every server it spawns, and a server that works on the
+    agent's files reads it back here. Returns the access and the directory a
+    relative path should resolve against, which is every sandbox-bound server's
+    first two lines.
+
+    Defaults to `local` with the process's own cwd, so a server can be run by
+    hand — that is what its smoke test does.
+    """
+    import os
+
+    env = os.environ if environ is None else environ
+    options = json.loads(env.get("AGENT_TRACER_OPTIONS") or "{}")
+    access = attach(
+        env.get("AGENT_TRACER_ENV_TYPE", "local"),
+        env.get("AGENT_TRACER_SANDBOX_ID", ""),
+        options,
+    )
+    return access, env.get("AGENT_TRACER_WORKDIR") or os.getcwd()
+
+
+def resolve(path: str, workdir: str) -> str:
+    """A relative path, against the directory the agent's commands run in."""
+    return path if path.startswith("/") else f"{workdir.rstrip('/')}/{path}"

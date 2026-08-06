@@ -24,3 +24,11 @@ dev = [
 
 [project.scripts]
 agent-tracer = "agent_tracer.run.cli:main"
+
+[tool.pytest.ini_options]
+# The suite is tests/. The `smoke_test.py` next to each MCP server is a
+# standalone `uv run` script that spawns its server over stdio, not a pytest
+# module — collecting them also collides three identical basenames in packages
+# with no __init__.py.
+testpaths = ["tests"]
+python_files = ["test_*.py"]

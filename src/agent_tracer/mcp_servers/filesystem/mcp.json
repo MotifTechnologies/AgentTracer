@@ -1,0 +1,24 @@
+{
+  "$schema": "../mcp.schema.json",
+  "manifest_version": 1,
+  "name": "filesystem",
+  "description": "Read, write, edit and search the agent's files in the task's sandbox, as tool calls rather than shell commands.",
+  "version": "0.1.0",
+  "transport": "stdio",
+  "command": "uv",
+  "args": ["run", "--quiet", "server.py"],
+  "env": {},
+  "startup_timeout_s": 15,
+  "call_timeout_s": 90,
+  "tools": [
+    {"name": "read_file", "description": "Read a text file, a window of lines at a time."},
+    {"name": "write_file", "description": "Write text to a file, replacing it if it exists."},
+    {"name": "edit_file", "description": "Replace an exact string in a file, refusing an ambiguous match."},
+    {"name": "list_directory", "description": "List a directory's entries."},
+    {"name": "file_info", "description": "Size, type and modification time of a path."},
+    {"name": "search_files", "description": "Find files whose name matches a glob, recursively."},
+    {"name": "search_content", "description": "Find lines matching a regular expression, recursively."},
+    {"name": "move_file", "description": "Move or rename a file or directory."},
+    {"name": "create_directory", "description": "Create a directory, including missing parents."}
+  ]
+}

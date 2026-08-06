@@ -25,24 +25,32 @@ src/agent_tracer/mcp_servers/
 ├── time/              # 현재 시각 · 타임존 변환
 ├── filesystem/        # 파일 읽기·쓰기·편집·검색      [샌드박스]
 ├── sqlite/            # SQLite 쿼리·수정              [샌드박스]
-└── soffice/           # 문서 변환 (LibreOffice)       [샌드박스]
+├── soffice/           # 문서 변환 (LibreOffice)       [샌드박스]
+└── context7/          # 라이브러리 문서 조회          [외부 HTTP]
 
 각 폴더는 mcp.json · server.py · smoke_test.py 로 동일하다.
+단 `[외부 HTTP]`는 server.py가 없다 — 우리가 띄우는 게 아니다.
 ```
 
 `[샌드박스]` 표시가 있는 서버는 에이전트 파일을 다루므로 아래 "샌드박스를 다루는
 서버" 계약을 따른다. 나머지는 샌드박스 환경변수를 무시한다.
 
-각 서버의 계약은 스모크 테스트가 실제 서버를 stdio로 띄워서 검증한다. 러너 없이
+`[외부 HTTP]`는 `transport: http`로 남의 엔드포인트를 가리킨다. spawn하는 프로세스가
+없으니 샌드박스 환경변수도 무관하고, 대신 **네트워크와 그쪽 가용성에 의존**한다.
+스모크 테스트가 실패하면 먼저 그쪽을 의심해야 하므로 실패 메시지가 그렇게 말한다.
+
+각 서버의 계약은 스모크 테스트가 실제 서버를 띄워(또는 접속해) 검증한다. 러너 없이
 단독 실행된다:
 
 ```bash
 cd src/agent_tracer/mcp_servers/<서버> && uv run smoke_test.py
 ```
 
-> search·fetch는 MCP가 아니라 stirrup 내장 web 툴(web_fetch/web_search)을 쓴다
+> 범용 search·fetch는 MCP가 아니라 stirrup 내장 web 툴(web_fetch/web_search)을 쓴다
 > (config `tools.web: true`, web_search는 `BRAVE_API_KEY` 필요). 같은 걸 MCP로
-> 또 붙이면 모델에게 중복된 툴이 두 벌 보인다.
+> 또 붙이면 모델에게 중복된 툴이 두 벌 보인다. `context7`은 임의 URL이 아니라 특정
+> 라이브러리 문서를 정리해서 주는 거라 별개로 둔다 — 겹치는 부분이 있으니, 실제
+> 궤적에서 둘 다 쓰이는지는 보고 판단할 것.
 
 ### 왜 이 서버들인가
 
@@ -59,6 +67,10 @@ cd src/agent_tracer/mcp_servers/<서버> && uv run smoke_test.py
   실행한다.
 - `time` — 모델에겐 시계가 없다. 기억한 오프셋은 DST 경계·인도(+05:30) 같은
   반시간 오프셋에서 틀리고, 그게 보통 태스크가 노리는 지점이다.
+- `context7` — 모델의 라이브러리 API 지식은 학습 시점에 묶여 있고, 낡은 시그니처를
+  자신 있게 쓴다. `time`이 시계를 주는 것과 같은 종류의 결핍 보충이다.
+  `resolve-library-id` → `query-docs` 2단계이고, 툴 이름이 하이픈인 건 우리가 정한
+  게 아니라 그쪽 스펙이다.
 
 **git 서버는 일부러 없다.** 기준을 뒤집으면 이유가 나온다 — 래퍼의 가치는 모델이
 그 CLI에 얼마나 서툰지에 비례하는데, git CLI는 모델이 가장 유창한 축이다. 게다가
@@ -136,7 +148,8 @@ PEP 723 헤더에는 그 서버가 실제로 쓰는 의존성만 적으면 된�
 | `transport` | ✅ | `stdio` \| `http` |
 | `command` / `args` | stdio 시 | 러너가 spawn할 명령. 상대 경로는 매니페스트 폴더 기준 |
 | `url` | http 시 | streamable-HTTP 엔드포인트 (서버 수명주기는 외부 관리) |
-| `env` | | spawn 환경변수. 시크릿은 반드시 `"env:VAR_NAME"` 참조로 — 원문 저장 금지, 미해석 시 실행 거부 |
+| `env` | | spawn 환경변수(stdio). 시크릿은 반드시 `"env:VAR_NAME"` 참조로 — 원문 저장 금지, 미해석 시 실행 거부 |
+| `headers` | | 매 요청에 붙는 HTTP 헤더(http 전용). `env` 와 같은 규율 — API 키를 매니페스트에 적으면 repo에 키를 공개하는 것. stdio에 쓰면 거부 |
 | `startup_timeout_s` | | initialize 핸드셰이크 대기 상한 (기본 15초) |
 | `call_timeout_s` | | 툴 호출 기본 타임아웃 (기본 60초) |
 | `tools` | | 선언적 툴 목록 (문서·계약 테스트용 — 런타임 진실은 MCP discovery) |

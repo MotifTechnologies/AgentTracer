@@ -1,0 +1,22 @@
+{
+  "$schema": "../mcp.schema.json",
+  "manifest_version": 1,
+  "name": "context7",
+  "description": "Up-to-date documentation and code examples for a library, so the model works from the current API rather than the one it memorised at training time.",
+  "version": "0.1.0",
+  "transport": "http",
+  "url": "https://mcp.context7.com/mcp",
+  "headers": {},
+  "startup_timeout_s": 20,
+  "call_timeout_s": 60,
+  "tools": [
+    {
+      "name": "resolve-library-id",
+      "description": "Resolve a package name to a Context7 library ID. Call this before query-docs."
+    },
+    {
+      "name": "query-docs",
+      "description": "Retrieve documentation and code examples for a resolved library ID."
+    }
+  ]
+}

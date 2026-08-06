@@ -146,6 +146,20 @@ SANDBOX_ENV_VARS = (
 )
 
 
+def _package_path() -> str:
+    """Where `agent_tracer` is importable from.
+
+    A server that works on the agent's files calls `environments.attach()`
+    rather than branching on backend, so it has to import this package — and it
+    runs under its own `uv run`, which does not inherit the runner's
+    interpreter. Passing the path is what lets a server stay declared with only
+    the dependencies it uses itself.
+    """
+    import agent_tracer
+
+    return str(Path(agent_tracer.__file__).resolve().parent.parent)
+
+
 def sandbox_env(
     *,
     env_type: str,
@@ -191,7 +205,9 @@ def build_stirrup_mcp_config(
                 var: (resolve_env_ref(val, field=f"mcp[{name}].env.{var}") if val.startswith("env:") else val)
                 for var, val in m.env.items()
             }
-            env = {**(sandbox or {}), **env}
+            # Manifest last: a server that wants a different sandbox, or its
+            # own import path, is allowed to say so.
+            env = {"PYTHONPATH": _package_path(), **(sandbox or {}), **env}
             servers[name] = StdioServerConfig(
                 command=m.command,
                 args=m.args,

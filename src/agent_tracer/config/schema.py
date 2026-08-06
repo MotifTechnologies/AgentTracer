@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -91,21 +91,36 @@ class MCPDiscoveryConfig(StrictModel):
 
 
 class EnvironmentConfig(StrictModel):
-    type: Literal["local", "docker"] = "local"
+    # Not a Literal: a backend can be installed rather than merged, and the
+    # registry raises with the available names if this is not one of them.
+    # Built in are local, docker and e2b.
+    type: str = "local"
     image: str | None = None
     working_dir: str = "/workspace"
+    user: str | None = None  # in-sandbox user, where the backend has one
     shell_timeout: int = 300
     env_vars: list[str] = Field(default_factory=list)
-    # Sandbox isolation (docker only). Defaults match the project security spec:
-    # no network, hard memory/pids caps, single temp-dir mount (stirrup default).
+    allowed_commands: list[str] = Field(default_factory=list)
+
+    # Isolation. Defaults match the project security spec: no network, hard
+    # memory/pids caps, single temp-dir mount where the backend mounts at all.
     network_isolation: bool = True
     mem_limit: str | None = "2g"
     pids_limit: int | None = 256
 
+    # Meaning the same thing across backends, expressed differently by each:
+    # a sandbox that outlives its run, and something to attribute it to.
+    ttl: float | None = None  # seconds; E2B kills its own, others may label it
+    labels: dict[str, str] = Field(default_factory=dict)
+
+    # Anything a specific backend needs and no other does. Untouched here.
+    options: dict[str, str] = Field(default_factory=dict)
+
     @model_validator(mode="after")
-    def _docker_needs_image(self) -> EnvironmentConfig:
-        if self.type == "docker" and not self.image:
-            raise ConfigError("environment: docker type requires 'image'")
+    def _image_is_required(self) -> EnvironmentConfig:
+        # `local` runs on this machine and has nothing to pull.
+        if self.type != "local" and not self.image:
+            raise ConfigError(f"environment: {self.type} type requires 'image'")
         return self
 
 

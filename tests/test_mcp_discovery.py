@@ -92,3 +92,44 @@ class TestStirrupMapping:
         server = mcp_config.mcp_servers["alpha"]
         assert server.command == "uv"
         assert server.cwd == str((tmp_path / "alpha").resolve())
+
+
+class TestHttpServers:
+    """`headers` is where a hosted server's API key goes, so it gets the same
+    `env:` discipline as `env` — a key written into a manifest is a key
+    published with the repository."""
+
+    def test_env_refs_in_headers_are_resolved(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TEST_DOCS_KEY", "secret-value")
+        _server(tmp_path, "docs", transport="http", url="https://example.test/mcp",
+                headers={"Authorization": "env:TEST_DOCS_KEY", "X-Fixed": "literal"},
+                command=None, args=[])
+        manifests = discover_mcp_servers(_cfg(tmp_path))
+
+        cfg = build_stirrup_mcp_config(manifests, tmp_path)
+
+        headers = cfg.mcp_servers["docs"].headers
+        assert headers == {"Authorization": "secret-value", "X-Fixed": "literal"}
+
+    def test_an_unset_ref_refuses_to_run(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("TEST_MISSING_KEY", raising=False)
+        _server(tmp_path, "docs", transport="http", url="https://example.test/mcp",
+                headers={"Authorization": "env:TEST_MISSING_KEY"}, command=None, args=[])
+        manifests = discover_mcp_servers(_cfg(tmp_path))
+
+        with pytest.raises(ConfigError, match="TEST_MISSING_KEY"):
+            build_stirrup_mcp_config(manifests, tmp_path)
+
+    def test_headers_are_rejected_on_stdio(self, tmp_path):
+        """They would be silently ignored otherwise."""
+        _server(tmp_path, "local", headers={"Authorization": "x"})
+
+        with pytest.raises(ConfigError, match="http transport only"):
+            discover_mcp_servers(_cfg(tmp_path))
+
+    def test_call_timeout_carries_to_the_http_client(self, tmp_path):
+        _server(tmp_path, "docs", transport="http", url="https://example.test/mcp",
+                call_timeout_s=42, command=None, args=[])
+        manifests = discover_mcp_servers(_cfg(tmp_path))
+
+        assert build_stirrup_mcp_config(manifests, tmp_path).mcp_servers["docs"].timeout == 42

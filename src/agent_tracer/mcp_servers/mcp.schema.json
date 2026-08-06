@@ -4,7 +4,12 @@
   "title": "agent-tracer MCP server manifest (MCP/<name>/mcp.json)",
   "description": "Declares how the agent-tracer runner discovers and launches an MCP server placed under the MCP/ directory. One subdirectory = one server. Servers are auto-registered by default (default all); YAML config may narrow the set via mcp.include / mcp.exclude.",
   "type": "object",
-  "required": ["manifest_version", "name", "description", "transport"],
+  "required": [
+    "manifest_version",
+    "name",
+    "description",
+    "transport"
+  ],
   "additionalProperties": false,
   "properties": {
     "manifest_version": {
@@ -25,7 +30,10 @@
       "description": "Server implementation version (semver recommended). Recorded in trajectory metadata for reproducibility."
     },
     "transport": {
-      "enum": ["stdio", "http"],
+      "enum": [
+        "stdio",
+        "http"
+      ],
       "description": "How the runner connects. stdio: runner spawns `command` and speaks MCP over stdin/stdout. http: runner connects to a streamable-HTTP endpoint at `url` (server lifecycle is external)."
     },
     "command": {
@@ -34,7 +42,9 @@
     },
     "args": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "default": [],
       "description": "Arguments for command (stdio only). Relative paths are resolved against this manifest's directory."
     },
@@ -45,9 +55,19 @@
     },
     "env": {
       "type": "object",
-      "additionalProperties": { "type": "string" },
+      "additionalProperties": {
+        "type": "string"
+      },
       "default": {},
       "description": "Environment variables passed to the spawned process. Values support env: references (e.g. \"env:SEARCH_API_KEY\") resolved from the runner's .env/environment — never store secrets literally. Unresolvable env: references abort the run (fail-fast), consistent with api_key/reasoning_key handling."
+    },
+    "headers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "description": "HTTP headers sent with every request (http only). Values support env: references (e.g. \"env:CONTEXT7_API_KEY\") — never store a key literally."
     },
     "startup_timeout_s": {
       "type": "number",
@@ -65,11 +85,18 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "description"],
+        "required": [
+          "name",
+          "description"
+        ],
         "additionalProperties": false,
         "properties": {
-          "name": { "type": "string" },
-          "description": { "type": "string" }
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
         }
       },
       "description": "Optional declared tool list, for documentation and contract tests. The authoritative list always comes from MCP tool discovery at runtime; contract tests warn when the two diverge."
@@ -77,12 +104,48 @@
   },
   "allOf": [
     {
-      "if": { "properties": { "transport": { "const": "stdio" } } },
-      "then": { "required": ["command"] }
+      "if": {
+        "properties": {
+          "transport": {
+            "const": "stdio"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "command"
+        ]
+      }
     },
     {
-      "if": { "properties": { "transport": { "const": "http" } } },
-      "then": { "required": ["url"] }
+      "if": {
+        "properties": {
+          "transport": {
+            "const": "http"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "transport": {
+            "const": "stdio"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "headers"
+          ]
+        }
+      }
     }
   ]
 }

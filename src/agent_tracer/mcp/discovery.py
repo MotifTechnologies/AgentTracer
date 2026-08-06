@@ -39,6 +39,10 @@ class MCPManifest(BaseModel):
     args: list[str] = []
     url: str | None = None
     env: dict[str, str] = {}
+    #: Sent with every request to an `http` server. Same `env:` discipline as
+    #: `env`, because this is where a hosted server's API key goes and a key
+    #: committed to a manifest is a key published with the repository.
+    headers: dict[str, str] = {}
     startup_timeout_s: float = 15
     call_timeout_s: float = 60
     tools: list[ManifestTool] = []
@@ -57,6 +61,8 @@ class MCPManifest(BaseModel):
             raise ValueError("stdio transport requires 'command'")
         if self.transport == "http" and not self.url:
             raise ValueError("http transport requires 'url'")
+        if self.transport == "stdio" and self.headers:
+            raise ValueError("'headers' applies to http transport only")
         return self
 
 
@@ -215,5 +221,13 @@ def build_stirrup_mcp_config(
                 cwd=str((root / name).resolve()),
             )
         else:
-            servers[name] = StreamableHttpServerConfig(url=m.url)
+            headers = {
+                key: (resolve_env_ref(val, field=f"mcp[{name}].headers.{key}") if val.startswith("env:") else val)
+                for key, val in m.headers.items()
+            }
+            servers[name] = StreamableHttpServerConfig(
+                url=m.url,
+                headers=headers or None,
+                timeout=m.call_timeout_s,
+            )
     return MCPConfig.model_validate({"mcpServers": servers})

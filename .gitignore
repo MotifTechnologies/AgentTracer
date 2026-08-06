@@ -1,0 +1,23 @@
+# Internal documents — never commit (government project docs, internal specs)
+confidential/
+
+# Secrets
+.env
+.env.*
+
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
+*.egg-info/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Run outputs
+results/
+*.traj.json

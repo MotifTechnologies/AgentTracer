@@ -1,0 +1,3 @@
+{"task_id": "math_001", "input": "Compute the 10th Fibonacci number (F(1)=1, F(2)=1) using Python code execution, then submit just the number.", "reference": "55"}
+{"task_id": "echo_001", "input": "Use the echo tool to echo the word 'trajectory' exactly 3 times, then submit the tool's output verbatim.", "reference": "trajectory trajectory trajectory"}
+{"task_id": "qa_001", "input": "What is the capital of France? Submit just the city name.", "reference": "Paris"}

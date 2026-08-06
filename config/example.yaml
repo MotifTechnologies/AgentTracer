@@ -1,0 +1,38 @@
+dataset:
+  name: custom
+  path: config/sample_tasks.jsonl
+
+model:
+  model_name: "moonshotai/Kimi-K3"
+  base_url: "http://127.0.0.1:8080/v1"
+  api_key: "env:VLLM_API_KEY"        # env: reference or a literal key, e.g. "sk-..."
+                                     # required — missing/unresolvable => refuse to run
+  reasoning_key: "reasoning"         # required — this server emits `reasoning`
+  max_tokens: 8192
+  context_window_tokens: 262144
+  timeout: 300
+
+agent:
+  max_turns: 10
+
+tools:
+  web: false                         # stirrup built-in web_fetch/web_search
+  # brave_api_key: "env:BRAVE_API_KEY"  # required only for web_search
+
+environment:
+  type: local
+  shell_timeout: 60
+
+# mcp:                               # omitted => packaged agent_tracer/mcp_servers/,
+#   include: [...]                   # default all; include/exclude to narrow
+
+runner:
+  max_concurrency: 3
+  task_timeout: 600
+  retry:
+    max_attempts: 2
+    backoff_base: 2.0
+  checkpoint: true
+
+output:
+  path: results/

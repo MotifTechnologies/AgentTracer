@@ -1,0 +1,177 @@
+"""Configuration schema with fail-fast validation.
+
+Policy: anything that would silently degrade generated trajectories aborts the
+run at config-load time — an unresolvable api_key, a missing reasoning_key, or
+a malformed MCP manifest is a hard error, never a warning.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+class ConfigError(ValueError):
+    """Raised when the configuration is invalid. Always aborts the run."""
+
+
+def resolve_env_ref(value: str, *, field: str) -> str:
+    """Resolve a secret-bearing config value.
+
+    ``env:VAR_NAME`` references resolve against the environment (recommended —
+    keeps keys out of config files); any other non-empty string is passed
+    through as a literal key.
+    """
+    if not value.startswith("env:"):
+        if not value:
+            raise ConfigError(f"{field}: empty value — refusing to run")
+        return value
+    var = value[len("env:") :]
+    resolved = os.environ.get(var)
+    if not resolved:
+        raise ConfigError(
+            f"{field}: environment variable {var!r} is not set or empty. "
+            "Set it in .env or the environment — refusing to run without it."
+        )
+    return resolved
+
+
+class StrictModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class ModelConfig(StrictModel):
+    model_name: str
+    base_url: str
+    api_key: str = Field(
+        description=(
+            "Required. Either an 'env:VAR_NAME' reference (recommended) or a "
+            "literal key passed directly in YAML."
+        )
+    )
+    reasoning_key: str = Field(
+        description=(
+            "Response field holding reasoning/thinking text (e.g. 'reasoning_content'). "
+            "Required: differs per model/server; a wrong or missing key would silently "
+            "drop thinking from every trajectory. Use 'none' for non-reasoning models."
+        )
+    )
+    max_tokens: int = 32768
+    context_window_tokens: int = 131072
+    reasoning_effort: str | None = None
+    timeout: float = 120.0
+    max_retries: int = 2
+    extra_kwargs: dict[str, Any] = Field(default_factory=dict)
+
+    def resolved_api_key(self) -> str:
+        return resolve_env_ref(self.api_key, field="model.api_key")
+
+
+class MCPDiscoveryConfig(StrictModel):
+    # None = the packaged server directory (agent_tracer/mcp_servers/).
+    discovery_dir: Path | None = None
+    include: list[str] | None = None
+    exclude: list[str] | None = None
+
+    def resolved_discovery_dir(self) -> Path:
+        if self.discovery_dir is not None:
+            return self.discovery_dir
+        import agent_tracer
+
+        return Path(agent_tracer.__file__).parent / "mcp_servers"
+
+    @model_validator(mode="after")
+    def _include_xor_exclude(self) -> MCPDiscoveryConfig:
+        if self.include is not None and self.exclude is not None:
+            raise ConfigError("mcp: 'include' and 'exclude' cannot be used together")
+        return self
+
+
+class EnvironmentConfig(StrictModel):
+    type: Literal["local", "docker"] = "local"
+    image: str | None = None
+    working_dir: str = "/workspace"
+    shell_timeout: int = 300
+    env_vars: list[str] = Field(default_factory=list)
+    # Sandbox isolation (docker only). Defaults match the project security spec:
+    # no network, hard memory/pids caps, single temp-dir mount (stirrup default).
+    network_isolation: bool = True
+    mem_limit: str | None = "2g"
+    pids_limit: int | None = 256
+
+    @model_validator(mode="after")
+    def _docker_needs_image(self) -> EnvironmentConfig:
+        if self.type == "docker" and not self.image:
+            raise ConfigError("environment: docker type requires 'image'")
+        return self
+
+
+class AgentConfig(StrictModel):
+    role: str | None = None
+    system_prompt: str | None = None
+    max_turns: int = 30
+    # 1.0 disables stirrup's auto-summarization: summarization rewrites history
+    # mid-run, which corrupts trajectories destined for SFT.
+    context_summarization_cutoff: float = 1.0
+
+
+class ToolsConfig(StrictModel):
+    """Built-in stirrup tools, enabled per run."""
+
+    web: bool = False
+    brave_api_key: str | None = None  # env: reference or literal; web_search needs it
+
+    def resolved_brave_key(self) -> str | None:
+        if self.brave_api_key is None:
+            return None
+        return resolve_env_ref(self.brave_api_key, field="tools.brave_api_key")
+
+
+class RetryConfig(StrictModel):
+    max_attempts: int = 3
+    backoff_base: float = 2.0
+
+
+class RunnerConfig(StrictModel):
+    max_concurrency: int = 8
+    task_timeout: float = 1800.0
+    retry: RetryConfig = Field(default_factory=RetryConfig)
+    checkpoint: bool = True
+
+
+class DatasetConfig(StrictModel):
+    name: str = "custom"
+    path: Path | None = None
+    split: str = "test"
+    limit: int | None = None
+
+    @model_validator(mode="after")
+    def _custom_needs_path(self) -> DatasetConfig:
+        if self.name == "custom" and self.path is None:
+            raise ConfigError("dataset: custom dataset requires 'path' (JSONL file)")
+        return self
+
+
+class OutputConfig(StrictModel):
+    path: Path = Path("results")
+    save_trajectories: bool = True
+
+
+class RunConfig(StrictModel):
+    dataset: DatasetConfig
+    model: ModelConfig
+    agent: AgentConfig = Field(default_factory=AgentConfig)
+    tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    environment: EnvironmentConfig = Field(default_factory=EnvironmentConfig)
+    mcp: MCPDiscoveryConfig = Field(default_factory=MCPDiscoveryConfig)
+    runner: RunnerConfig = Field(default_factory=RunnerConfig)
+    output: OutputConfig = Field(default_factory=OutputConfig)
+
+    def validate_startup(self) -> None:
+        """Fail-fast checks that touch the environment (called once at startup)."""
+        self.model.resolved_api_key()
+        if not self.model.reasoning_key:
+            raise ConfigError("model.reasoning_key: required — refusing to run")

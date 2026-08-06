@@ -1,0 +1,19 @@
+{
+  "$schema": "../mcp.schema.json",
+  "manifest_version": 1,
+  "name": "echo",
+  "description": "Reference MCP server: echoes input text back. Contract example for the MCP/ auto-discovery convention.",
+  "version": "0.1.0",
+  "transport": "stdio",
+  "command": "uv",
+  "args": ["run", "--quiet", "server.py"],
+  "env": {},
+  "startup_timeout_s": 15,
+  "call_timeout_s": 30,
+  "tools": [
+    {
+      "name": "echo",
+      "description": "Echo the given text back, optionally repeated."
+    }
+  ]
+}

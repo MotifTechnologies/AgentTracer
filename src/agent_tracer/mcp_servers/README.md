@@ -26,6 +26,8 @@ src/agent_tracer/mcp_servers/
 ├── filesystem/        # 파일 읽기·쓰기·편집·검색      [샌드박스]
 ├── sqlite/            # SQLite 쿼리·수정              [샌드박스]
 ├── soffice/           # 문서 변환 (LibreOffice)       [샌드박스]
+├── pdf/               # PDF 텍스트·표 추출            [샌드박스]
+├── xlsx/              # 워크북 읽기·셀 편집           [샌드박스]
 └── context7/          # 라이브러리 문서 조회          [외부 HTTP]
 
 각 폴더는 mcp.json · server.py · smoke_test.py 로 동일하다.
@@ -67,6 +69,18 @@ cd src/agent_tracer/mcp_servers/<서버> && uv run smoke_test.py
   실행한다.
 - `time` — 모델에겐 시계가 없다. 기억한 오프셋은 DST 경계·인도(+05:30) 같은
   반시간 오프셋에서 틀리고, 그게 보통 태스크가 노리는 지점이다.
+- `pdf` — `soffice`는 PDF로 *내보내는* 건 잘하고 *읽는* 건 못 한다(LibreOffice가
+  PDF를 그림으로 열어서 텍스트가 흐트러지거나 아예 안 나온다). 추출은 다른 일이다.
+  표는 `extract_text`로 뽑으면 열이 붙어버려서 숫자를 오독하게 되므로 셀로 분리해
+  준다. 텍스트가 없는 페이지는 빈 문자열이 아니라 **"스캔본으로 보인다"고 말한다** —
+  모델이 "빈 문서"로 결론내는 걸 막는다.
+- `xlsx` — `soffice`로 CSV 변환하면 시트·수식·셀 주소가 다 날아간다. 스프레드시트
+  질문은 보통 그것들에 대한 질문이다. 함정 두 개를 설계로 막았다:
+  **(1) 수식의 값은 파일에 없다.** openpyxl은 수식이나 캐시된 값 중 하나만 읽는데,
+  스크립트로 만들고 Excel로 연 적 없는 파일은 캐시가 비어 있다. 값을 요청하면 계산
+  셀이 전부 `None`으로 와서 "빈 칸"으로 읽힌다. 그래서 **둘 다 읽어 함께 돌려주고**,
+  캐시 없는 수식은 따로 알린다. **(2) 왕복이 손실적이다.** openpyxl은 저장할 때 파일을
+  다시 만들어서 차트·이미지가 사라진다. 그런 워크북이면 **쓰기를 거부한다.**
 - `context7` — 모델의 라이브러리 API 지식은 학습 시점에 묶여 있고, 낡은 시그니처를
   자신 있게 쓴다. `time`이 시계를 주는 것과 같은 종류의 결핍 보충이다.
   `resolve-library-id` → `query-docs` 2단계이고, 툴 이름이 하이픈인 건 우리가 정한
@@ -135,7 +149,21 @@ rc, out, err = access.exec(f"wc -l {resolve('data.csv', workdir)}")
 `access`가 제공하는 건 `exec(command, timeout_s)` 하나뿐이다
 ([`environments/__init__.py`](../environments/__init__.py)의 `SandboxAccess`).
 파일 API도 수명주기도 없다 — 문서를 변환하는 서버에 필요한 건 명령 하나다.
-바이너리를 주고받아야 하면 base64로 감싼다(`filesystem/server.py` 참고).
+
+**바이트가 필요하면 `read_bytes` / `write_bytes`를 쓴다.** exec만 있는 통로로
+base64를 태워 보내는 게 전부지만, 셋이 같은 걸 필요로 해서 한군데로 모았다.
+
+```python
+from agent_tracer.environments import from_env, read_bytes, resolve
+
+access, workdir = from_env()
+raw = read_bytes(access, resolve("report.pdf", workdir))   # 정확한 바이트
+```
+
+`pdf`·`xlsx`가 이 위에 있다 — **샌드박스에서 바이트만 꺼내 서버 프로세스에서
+파싱한다.** pypdf·openpyxl을 샌드박스 이미지에 요구하지 않아도 되고(각자 PEP 723
+헤더에 선언), 이미지마다 다르게 실패하지도 않는다. 쓰기는 ARG_MAX 때문에 1 MiB,
+읽기는 32 MiB에서 막고 그 이상은 `code_exec`으로 넘긴다.
 
 이 서버들은 `attach()`를 쓰려고 `agent_tracer`를 import하는데, 각자 별도 `uv run`이라
 러너의 인터프리터를 물려받지 않는다. 그래서 러너가 `PYTHONPATH`도 같이 넘긴다 —

@@ -21,18 +21,51 @@ src/agent_tracer/mcp_servers/
 ├── echo/              # 예제 서버 (계약 레퍼런스)
 │   ├── mcp.json
 │   └── server.py
-├── calculator/        # 정확 연산 (샌드박스 불필요)
-│   ├── mcp.json
-│   ├── server.py
-│   └── smoke_test.py
-└── soffice/           # 문서 변환 — 태스크 샌드박스 안의 LibreOffice
-    ├── mcp.json
-    ├── server.py
-    └── smoke_test.py
+├── calculator/        # 정확 연산
+├── time/              # 현재 시각 · 타임존 변환
+├── filesystem/        # 파일 읽기·쓰기·편집·검색      [샌드박스]
+├── sqlite/            # SQLite 쿼리·수정              [샌드박스]
+└── soffice/           # 문서 변환 (LibreOffice)       [샌드박스]
+
+각 폴더는 mcp.json · server.py · smoke_test.py 로 동일하다.
 ```
 
-> search는 MCP가 아니라 stirrup 내장 web 툴(web_fetch/web_search)을 사용한다
-> (config `tools.web: true`, web_search는 `BRAVE_API_KEY` 필요).
+`[샌드박스]` 표시가 있는 서버는 에이전트 파일을 다루므로 아래 "샌드박스를 다루는
+서버" 계약을 따른다. 나머지는 샌드박스 환경변수를 무시한다.
+
+각 서버의 계약은 스모크 테스트가 실제 서버를 stdio로 띄워서 검증한다. 러너 없이
+단독 실행된다:
+
+```bash
+cd src/agent_tracer/mcp_servers/<서버> && uv run smoke_test.py
+```
+
+> search·fetch는 MCP가 아니라 stirrup 내장 web 툴(web_fetch/web_search)을 쓴다
+> (config `tools.web: true`, web_search는 `BRAVE_API_KEY` 필요). 같은 걸 MCP로
+> 또 붙이면 모델에게 중복된 툴이 두 벌 보인다.
+
+### 왜 이 서버들인가
+
+`code_exec`으로 다 되는데도 툴로 두는 이유는 **궤적에 무엇이 남는가**다.
+`cat -n f | sed -n '20,40p'`는 모델의 셸 숙련도를 기록하고,
+`read_file(path=..., offset=20)`은 수행한 단계를 기록한다. 학습 데이터로 쓸 거면
+후자가 쓸모 있고, 왕복 비용은 같다.
+
+- `filesystem` — `edit_file`은 셸에 마땅한 대응물이 없다. `sed -i`를 한 번에
+  맞히는 건 태스크와 무관한 기술이고, 틀리면 파일이 조용히 깨진다. 여기서는
+  정확히 한 번 매칭되지 않으면 개수와 함께 거부한다.
+- `sqlite` — 합계·조인을 모델이 암산하면 자신 있게 틀린다. 쿼리는 검증 가능하다.
+  샌드박스에 `sqlite3` CLI는 대개 없으므로 `python3`(표준 라이브러리 sqlite3)로
+  실행한다.
+- `time` — 모델에겐 시계가 없다. 기억한 오프셋은 DST 경계·인도(+05:30) 같은
+  반시간 오프셋에서 틀리고, 그게 보통 태스크가 노리는 지점이다.
+
+**git 서버는 일부러 없다.** 기준을 뒤집으면 이유가 나온다 — 래퍼의 가치는 모델이
+그 CLI에 얼마나 서툰지에 비례하는데, git CLI는 모델이 가장 유창한 축이다. 게다가
+쓰기(commit·checkout·reset)를 열면 태스크 도중 작업 트리가 날아갈 경로가 생기고,
+읽기만 열면 어차피 커밋하러 셸에 들어간 모델이 조회도 거기서 끝낸다. 실제로 그랬다:
+읽기 전용 git 서버를 붙여 돌려봤을 때 모델은 `git__log` 대신
+`git rev-list --count`를 셸로 실행했다. 양쪽 다 값을 못 하므로 `code_exec`에 맡긴다.
 
 ## YAML에서 포함 서버 제어
 
@@ -41,8 +74,8 @@ src/agent_tracer/mcp_servers/
 ```yaml
 mcp:
   # discovery_dir: 미지정 시 패키지 내장 mcp_servers/ 사용
-  include: ["search", "soffice"] # 이 서버들만 등록
-  # exclude: ["calculator"]      # 또는 제외 방식 (include와 동시 사용 불가)
+  include: ["filesystem", "soffice"] # 이 서버들만 등록
+  # exclude: ["echo"]                # 또는 제외 방식 (include와 동시 사용 불가)
 ```
 
 등록 결과(서버·툴 목록, 버전)는 궤적 metadata에 기록된다.
@@ -70,10 +103,21 @@ mcp:
 된다. 빈 값은 `""`가 아니라 아예 빠지니 **존재 여부**로 판단하면 된다. 매니페스트
 `env`가 마지막에 병합되므로 필요하면 덮어쓸 수 있다.
 
-샌드박스에 실제로 닿는 방법은 `environments.attach(env_type, sandbox_id, options)`
-하나뿐이다. **백엔드로 분기하지 말 것** — 그래야 플러그인으로 설치된 샌드박스가 서버
-수정 없이 그대로 동작한다. 돌려주는 객체는 `exec(command, timeout_s)` 한 메서드다
+읽는 쪽은 `environments.from_env()` 한 줄이면 된다 — 위 변수들을 해석해서
+`(access, workdir)`을 돌려준다. **백엔드로 분기하지 말 것.** 그래야 플러그인으로
+설치된 샌드박스가 서버 수정 없이 그대로 동작한다.
+
+```python
+from agent_tracer.environments import from_env, resolve
+
+access, workdir = from_env()
+rc, out, err = access.exec(f"wc -l {resolve('data.csv', workdir)}")
+```
+
+`access`가 제공하는 건 `exec(command, timeout_s)` 하나뿐이다
 ([`environments/__init__.py`](../environments/__init__.py)의 `SandboxAccess`).
+파일 API도 수명주기도 없다 — 문서를 변환하는 서버에 필요한 건 명령 하나다.
+바이너리를 주고받아야 하면 base64로 감싼다(`filesystem/server.py` 참고).
 
 이 서버들은 `attach()`를 쓰려고 `agent_tracer`를 import하는데, 각자 별도 `uv run`이라
 러너의 인터프리터를 물려받지 않는다. 그래서 러너가 `PYTHONPATH`도 같이 넘긴다 —

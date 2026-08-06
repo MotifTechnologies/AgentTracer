@@ -9,6 +9,7 @@ dataset's tool distribution (fail-fast, same policy as api_key/reasoning_key).
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Literal
 
@@ -123,8 +124,64 @@ def _select(
     return manifests
 
 
-def build_stirrup_mcp_config(manifests: dict[str, MCPManifest], root: Path):
-    """Map selected manifests onto stirrup's MCPConfig for its native client."""
+#: Environment variables the runner sets on every stdio server it spawns.
+#:
+#: A manifest is read once at startup; a sandbox is created per task. So a
+#: server that works on the agent's files cannot learn from its manifest which
+#: sandbox is this task's — there is nowhere to put a value that does not exist
+#: yet. It arrives here instead, in terms no backend owns: a type, an id, and
+#: whatever that backend needs to attach (see agent_tracer.environments).
+#:
+#: Set on every server rather than opted into per manifest, so a new one can
+#: rely on them being present. A server that only computes ignores them.
+SANDBOX_ENV_PREFIX = "AGENT_TRACER_"
+
+SANDBOX_ENV_VARS = (
+    "AGENT_TRACER_ENV_TYPE",  # environment.type the sandbox was created under
+    "AGENT_TRACER_SANDBOX_ID",  # what environments.attach() takes; absent for local
+    "AGENT_TRACER_WORKDIR",  # the agent's working directory, inside the sandbox
+    "AGENT_TRACER_HOST_DIR",  # host path the sandbox mounts, where it mounts one
+    "AGENT_TRACER_USER",  # in-sandbox user, where the backend has one
+    "AGENT_TRACER_OPTIONS",  # JSON: backend extras, passed to attach() untouched
+)
+
+
+def sandbox_env(
+    *,
+    env_type: str,
+    sandbox_id: str | None = None,
+    workdir: str | None = None,
+    host_dir: str | None = None,
+    user: str | None = None,
+    options: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Describe this task's sandbox for the servers about to be spawned.
+
+    Empty values are dropped rather than passed as "", so a server tests for
+    presence instead of for emptiness.
+    """
+    values = {
+        "AGENT_TRACER_ENV_TYPE": env_type,
+        "AGENT_TRACER_SANDBOX_ID": sandbox_id,
+        "AGENT_TRACER_WORKDIR": workdir,
+        "AGENT_TRACER_HOST_DIR": host_dir,
+        "AGENT_TRACER_USER": user,
+        "AGENT_TRACER_OPTIONS": json.dumps(options) if options else None,
+    }
+    return {k: v for k, v in values.items() if v}
+
+
+def build_stirrup_mcp_config(
+    manifests: dict[str, MCPManifest],
+    root: Path,
+    sandbox: dict[str, str] | None = None,
+):
+    """Map selected manifests onto stirrup's MCPConfig for its native client.
+
+    `sandbox` is merged into every stdio server's environment. A manifest can
+    override any of it; none of it is secret, and a server that should be
+    pinned to one sandbox ought to be able to say so.
+    """
     from stirrup.tools.mcp import MCPConfig, StdioServerConfig, StreamableHttpServerConfig
 
     servers: dict[str, Any] = {}
@@ -134,6 +191,7 @@ def build_stirrup_mcp_config(manifests: dict[str, MCPManifest], root: Path):
                 var: (resolve_env_ref(val, field=f"mcp[{name}].env.{var}") if val.startswith("env:") else val)
                 for var, val in m.env.items()
             }
+            env = {**(sandbox or {}), **env}
             servers[name] = StdioServerConfig(
                 command=m.command,
                 args=m.args,

@@ -21,8 +21,14 @@ src/agent_tracer/mcp_servers/
 ├── echo/              # 예제 서버 (계약 레퍼런스)
 │   ├── mcp.json
 │   └── server.py
-├── calculator/        # (예정) 조기훈 님
-└── soffice/           # (예정) 조기훈 님
+├── calculator/        # 정확 연산 (샌드박스 불필요)
+│   ├── mcp.json
+│   ├── server.py
+│   └── smoke_test.py
+└── soffice/           # 문서 변환 — 태스크 샌드박스 안의 LibreOffice
+    ├── mcp.json
+    ├── server.py
+    └── smoke_test.py
 ```
 
 > search는 MCP가 아니라 stirrup 내장 web 툴(web_fetch/web_search)을 사용한다
@@ -40,6 +46,41 @@ mcp:
 ```
 
 등록 결과(서버·툴 목록, 버전)는 궤적 metadata에 기록된다.
+
+## 샌드박스를 다루는 서버
+
+에이전트 파일을 건드리는 서버는 **어느 샌드박스가 이번 태스크 것인지** 알아야 한다.
+매니페스트는 러너 기동 시 한 번 읽히고 샌드박스는 태스크마다 새로 만들어지므로,
+그 값을 매니페스트에 적어둘 방법은 없다 — 아직 존재하지 않는 값이다.
+
+그래서 러너가 **spawn하는 모든 stdio 서버의 환경변수**로 넘긴다
+(구현: [`mcp/discovery.py`](../mcp/discovery.py)의 `sandbox_env`). 백엔드에 중립적인
+용어만 쓴다:
+
+| 변수 | 의미 |
+|---|---|
+| `AGENT_TRACER_ENV_TYPE` | 샌드박스를 만든 `environment.type` |
+| `AGENT_TRACER_SANDBOX_ID` | `environments.attach()`에 넘길 값 (local이면 없음) |
+| `AGENT_TRACER_WORKDIR` | 샌드박스 안 에이전트 작업 디렉토리 |
+| `AGENT_TRACER_HOST_DIR` | 샌드박스가 마운트한 호스트 경로 (마운트하는 백엔드만) |
+| `AGENT_TRACER_USER` | 샌드박스 안 사용자 (있는 백엔드만) |
+| `AGENT_TRACER_OPTIONS` | JSON — 백엔드별 추가 값, `attach()`에 그대로 전달 |
+
+매니페스트별 opt-in이 아니라 **전부에 항상 세팅**되므로 새 서버는 존재를 전제해도
+된다. 빈 값은 `""`가 아니라 아예 빠지니 **존재 여부**로 판단하면 된다. 매니페스트
+`env`가 마지막에 병합되므로 필요하면 덮어쓸 수 있다.
+
+샌드박스에 실제로 닿는 방법은 `environments.attach(env_type, sandbox_id, options)`
+하나뿐이다. **백엔드로 분기하지 말 것** — 그래야 플러그인으로 설치된 샌드박스가 서버
+수정 없이 그대로 동작한다. 돌려주는 객체는 `exec(command, timeout_s)` 한 메서드다
+([`environments/__init__.py`](../environments/__init__.py)의 `SandboxAccess`).
+
+이 서버들은 `attach()`를 쓰려고 `agent_tracer`를 import하는데, 각자 별도 `uv run`이라
+러너의 인터프리터를 물려받지 않는다. 그래서 러너가 `PYTHONPATH`도 같이 넘긴다 —
+PEP 723 헤더에는 그 서버가 실제로 쓰는 의존성만 적으면 된다.
+
+`soffice/`가 이 패턴의 레퍼런스이고, `calculator/`는 샌드박스를 아예 쓰지 않는 쪽의
+레퍼런스다.
 
 ## 매니페스트 작성 규칙 요약
 

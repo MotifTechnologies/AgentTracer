@@ -1,0 +1,19 @@
+{
+  "$schema": "../mcp.schema.json",
+  "manifest_version": 1,
+  "name": "pdf",
+  "description": "Read PDFs in the task's sandbox — text by page, tables as cells, metadata, and search. Extraction only; soffice generates PDFs.",
+  "version": "0.1.0",
+  "transport": "stdio",
+  "command": "uv",
+  "args": ["run", "--quiet", "server.py"],
+  "env": {},
+  "startup_timeout_s": 25,
+  "call_timeout_s": 180,
+  "tools": [
+    {"name": "pdf_info", "description": "Page count, metadata and page size of a PDF."},
+    {"name": "extract_text", "description": "Extract text from a PDF, one page range at a time."},
+    {"name": "extract_tables", "description": "Extract tables from a PDF as rows of cells."},
+    {"name": "search_text", "description": "Find which pages contain a string, with surrounding context."}
+  ]
+}

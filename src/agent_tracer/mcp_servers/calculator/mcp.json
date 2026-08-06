@@ -1,0 +1,19 @@
+{
+  "$schema": "../mcp.schema.json",
+  "manifest_version": 1,
+  "name": "calculator",
+  "description": "Exact arithmetic on decimal numbers, evaluated without a shell or a Python interpreter.",
+  "version": "0.1.0",
+  "transport": "stdio",
+  "command": "uv",
+  "args": ["run", "--quiet", "server.py"],
+  "env": {},
+  "startup_timeout_s": 15,
+  "call_timeout_s": 10,
+  "tools": [
+    {
+      "name": "calculate",
+      "description": "Evaluate an arithmetic expression exactly and return the result."
+    }
+  ]
+}

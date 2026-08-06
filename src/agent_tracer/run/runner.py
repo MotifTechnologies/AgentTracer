@@ -66,7 +66,12 @@ class Runner:
             if self.manifests
             else None
         )
-        self.orchestrator = SingleAgentOrchestrator(config, self.mcp_config)
+        self.orchestrator = SingleAgentOrchestrator(
+            config,
+            self.mcp_config,
+            manifests=self.manifests or None,
+            mcp_root=config.mcp.resolved_discovery_dir() if self.manifests else None,
+        )
         self.trajectory_dir = config.output.path / "trajectories"
         self.results_path = config.output.path / "results.jsonl"
 

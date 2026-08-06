@@ -1,0 +1,18 @@
+{
+  "$schema": "../mcp.schema.json",
+  "manifest_version": 1,
+  "name": "time",
+  "description": "The current time in any IANA timezone, and conversion between zones with real DST rules.",
+  "version": "0.1.0",
+  "transport": "stdio",
+  "command": "uv",
+  "args": ["run", "--quiet", "server.py"],
+  "env": {},
+  "startup_timeout_s": 15,
+  "call_timeout_s": 30,
+  "tools": [
+    {"name": "current_time", "description": "The time right now in a timezone."},
+    {"name": "convert_time", "description": "Convert a wall-clock time from one timezone to another."},
+    {"name": "list_timezones", "description": "List IANA timezone names, optionally filtered."}
+  ]
+}

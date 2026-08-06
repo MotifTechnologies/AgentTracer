@@ -161,3 +161,64 @@ def resolve(path: str, workdir: str) -> str:
             "path, or one relative to the working directory."
         )
     return path if path.startswith("/") else f"{workdir.rstrip('/')}/{path}"
+
+
+#: A write is one shell command, so the encoded bytes ride in the argument list.
+#: ARG_MAX is 2 MiB on Linux and the command carries more than the payload, so
+#: this leaves generous headroom. Larger files are a job for `code_exec`.
+MAX_WRITE_BYTES = 1 << 20
+
+#: A read comes back on stdout rather than in argv, so it can afford more — but
+#: not unboundedly: it is held in memory here and base64 costs a third again.
+MAX_READ_BYTES = 32 << 20
+
+
+def read_bytes(access: SandboxAccess, path: str, *, timeout_s: float = 60) -> bytes:
+    """The file's exact bytes, out of a sandbox that only offers `exec`.
+
+    Base64 because a shell hands back text, and a task's files are not reliably
+    UTF-8 — a scanned PDF or an .xlsx is not text at all.
+    """
+    import base64
+    import shlex
+
+    quoted = shlex.quote(path)
+    # Checked first so an oversized file fails saying so, rather than after
+    # transferring most of it.
+    rc, out, _ = access.exec(f"stat -c %s {quoted}", timeout_s=30)
+    if rc != 0:
+        raise FileNotFoundError(f"No such file in the sandbox: {path}")
+    size = int(out.strip() or 0)
+    if size > MAX_READ_BYTES:
+        raise ValueError(
+            f"{path} is {size} bytes, larger than this reads ({MAX_READ_BYTES}). "
+            "Work on it with code_exec inside the sandbox instead."
+        )
+
+    # `-w0`: GNU base64 wraps at 76 columns by default and the newlines would
+    # have to be stripped back out.
+    rc, out, err = access.exec(f"base64 -w0 {quoted}", timeout_s=timeout_s)
+    if rc != 0:
+        raise OSError(f"Could not read {path}: {(err.strip() or out.strip())[:200]}")
+    return base64.b64decode(out.strip())
+
+
+def write_bytes(access: SandboxAccess, path: str, data: bytes, *, timeout_s: float = 60) -> None:
+    """Put exact bytes into a sandbox that only offers `exec`."""
+    import base64
+    import shlex
+
+    if len(data) > MAX_WRITE_BYTES:
+        raise ValueError(
+            f"{len(data)} bytes is larger than this writes ({MAX_WRITE_BYTES}). "
+            "Generate the file with code_exec inside the sandbox instead."
+        )
+    encoded = base64.b64encode(data).decode("ascii")
+    parent = path.rsplit("/", 1)[0] or "/"
+    script = (
+        f"mkdir -p {shlex.quote(parent)} && "
+        f"printf %s {shlex.quote(encoded)} | base64 -d > {shlex.quote(path)}"
+    )
+    rc, out, err = access.exec(script, timeout_s=timeout_s)
+    if rc != 0:
+        raise OSError(f"Could not write {path}: {(err.strip() or out.strip())[:200]}")

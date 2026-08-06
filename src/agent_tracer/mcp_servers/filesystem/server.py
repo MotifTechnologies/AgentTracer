@@ -18,9 +18,9 @@ keeping, and it is the same round trip either way.
 wrong corrupts the file silently. Here an edit that does not match exactly once
 is refused, with the count.
 
-Content moves base64-encoded. Going through a shell means text is all that comes
-back, and a task's files are not reliably UTF-8 — a latin-1 CSV or a stray byte
-would otherwise arrive mangled, or kill the call.
+Content moves base64-encoded, via `environments.read_bytes`/`write_bytes`: a
+shell hands back text, and a task's files are not reliably UTF-8 — a latin-1 CSV
+or a stray byte would otherwise arrive mangled, or kill the call.
 """
 
 import base64
@@ -28,17 +28,11 @@ import shlex
 
 from mcp.server import MCPServer
 
-from agent_tracer.environments import from_env, resolve
+from agent_tracer.environments import from_env, read_bytes, resolve, write_bytes
 
 mcp = MCPServer(name="filesystem", version="0.1.0")
 
 DEFAULT_TIMEOUT_S = 60
-
-#: A write is sent as one shell command, so the encoded content has to fit in
-#: the argument list. ARG_MAX is 2 MiB on Linux and the command carries more
-#: than the payload, so this leaves generous headroom. Anything larger is a job
-#: for `code_exec`, and saying so beats "Argument list too long".
-MAX_WRITE_BYTES = 1 << 20
 
 #: `read_file` truncates rather than returning a whole file: a 200 MB log
 #: otherwise arrives as one tool result and takes the context window with it.
@@ -63,31 +57,12 @@ def _abs(path: str) -> str:
     return resolve(path, _sandbox()[1])
 
 
-def _read_bytes(path: str, timeout_s: int = DEFAULT_TIMEOUT_S) -> bytes:
-    """The file's exact bytes, whatever encoding it happens to be in."""
-    # `-w0` matters: GNU base64 wraps at 76 columns by default and the newlines
-    # would have to be stripped back out.
-    rc, out, err = _run(f"base64 -w0 {shlex.quote(path)}", timeout_s)
-    if rc != 0:
-        raise FileNotFoundError(f"Could not read {path}: {(err.strip() or out.strip())[:200]}")
-    return base64.b64decode(out.strip())
+def _read(path: str) -> bytes:
+    return read_bytes(_sandbox()[0], path, timeout_s=DEFAULT_TIMEOUT_S)
 
 
-def _write_bytes(path: str, content: bytes, timeout_s: int = DEFAULT_TIMEOUT_S) -> None:
-    if len(content) > MAX_WRITE_BYTES:
-        raise ValueError(
-            f"{len(content)} bytes is larger than this tool writes ({MAX_WRITE_BYTES}). "
-            "Generate the file with code_exec instead."
-        )
-    encoded = base64.b64encode(content).decode("ascii")
-    parent = path.rsplit("/", 1)[0] or "/"
-    script = (
-        f"mkdir -p {shlex.quote(parent)} && "
-        f"printf %s {shlex.quote(encoded)} | base64 -d > {shlex.quote(path)}"
-    )
-    rc, out, err = _run(script, timeout_s)
-    if rc != 0:
-        raise RuntimeError(f"Could not write {path}: {(err.strip() or out.strip())[:200]}")
+def _write(path: str, content: bytes) -> None:
+    write_bytes(_sandbox()[0], path, content, timeout_s=DEFAULT_TIMEOUT_S)
 
 
 def _decode(raw: bytes) -> str:
@@ -112,7 +87,7 @@ def read_file(path: str, offset: int = 0, limit: int = DEFAULT_READ_LIMIT) -> di
     # with "\n" — so a file holding any of them was counted as more lines than
     # it has, paged by boundaries that are not there, and handed to the model
     # as bytes it does not contain.
-    lines = _decode(_read_bytes(_abs(path))).split("\n")
+    lines = _decode(_read(_abs(path))).split("\n")
     if lines and lines[-1] == "":
         lines.pop()  # a trailing newline ends the last line, it does not start one
     window = lines[offset : offset + limit]
@@ -138,7 +113,7 @@ def write_file(path: str, content: str) -> dict:
         content: The full new contents.
     """
     target = _abs(path)
-    _write_bytes(target, content.encode("utf-8"))
+    _write(target, content.encode("utf-8"))
     return {"path": target, "bytes_written": len(content.encode("utf-8"))}
 
 
@@ -162,7 +137,7 @@ def edit_file(path: str, old_string: str, new_string: str, replace_all: bool = F
     # whole file, not just the edited part — which is the silent corruption
     # this tool exists to avoid. A file that is not UTF-8 at all simply does
     # not match a non-ASCII `old_string`, and says so.
-    raw = _read_bytes(target)
+    raw = _read(target)
     old, new = old_string.encode("utf-8"), new_string.encode("utf-8")
     count = raw.count(old)
 
@@ -174,7 +149,7 @@ def edit_file(path: str, old_string: str, new_string: str, replace_all: bool = F
             "surrounding text to make it unique, or pass replace_all=true."
         )
 
-    _write_bytes(target, raw.replace(old, new) if replace_all else raw.replace(old, new, 1))
+    _write(target, raw.replace(old, new) if replace_all else raw.replace(old, new, 1))
     return {"path": target, "replacements": count if replace_all else 1}
 
 

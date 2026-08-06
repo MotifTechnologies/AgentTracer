@@ -17,7 +17,17 @@ from types import SimpleNamespace
 import pytest
 
 from agent_tracer.config.schema import ConfigError, EnvironmentConfig
-from agent_tracer.environments import BUILTIN, _load, describe, from_env, resolve
+from agent_tracer.environments import (
+    BUILTIN,
+    MAX_READ_BYTES,
+    MAX_WRITE_BYTES,
+    _load,
+    describe,
+    from_env,
+    read_bytes,
+    resolve,
+    write_bytes,
+)
 from agent_tracer.mcp.discovery import SANDBOX_ENV_VARS, sandbox_env
 
 
@@ -227,3 +237,91 @@ class TestFromEnv:
         containment check here would stop nothing a caller cannot do by writing
         the path out in full. The sandbox is the boundary, not this function."""
         assert resolve("../shared/data.csv", "/work") == "/work/../shared/data.csv"
+
+class TestByteTransfer:
+    """Moving bytes across an interface that only offers `exec`.
+
+    Three servers depend on this being exact: filesystem round-trips text, and
+    pdf and xlsx parse binary formats where one wrong byte is a corrupt file.
+    """
+
+    @pytest.fixture
+    def sandbox(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        access, _ = from_env({})
+        return access, tmp_path
+
+    def test_arbitrary_bytes_survive_the_round_trip(self, sandbox):
+        """Not text: a NUL, a lone high byte, and a CRLF that a shell might eat."""
+        access, root = sandbox
+        payload = bytes(range(256)) + b"\r\n\x00 \xed\x95\x9c\xea\xb8\x80"
+
+        write_bytes(access, str(root / "blob.bin"), payload)
+
+        assert read_bytes(access, str(root / "blob.bin")) == payload
+
+    def test_a_real_zip_container_survives(self, sandbox):
+        """What .xlsx actually is — a byte off and it stops being readable."""
+        import io
+        import zipfile
+
+        access, root = sandbox
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("sheet.xml", "<c>중간</c>")
+        original = buffer.getvalue()
+
+        write_bytes(access, str(root / "book.zip"), original)
+        recovered = read_bytes(access, str(root / "book.zip"))
+
+        assert recovered == original
+        with zipfile.ZipFile(io.BytesIO(recovered)) as archive:
+            assert archive.read("sheet.xml").decode() == "<c>중간</c>"
+
+    def test_write_creates_missing_parents(self, sandbox):
+        access, root = sandbox
+
+        write_bytes(access, str(root / "a" / "b" / "c.txt"), b"x")
+
+        assert (root / "a" / "b" / "c.txt").read_bytes() == b"x"
+
+    def test_an_empty_file_is_not_an_error(self, sandbox):
+        access, root = sandbox
+        (root / "empty.txt").write_bytes(b"")
+
+        assert read_bytes(access, str(root / "empty.txt")) == b""
+
+    def test_a_missing_file_says_so(self, sandbox):
+        access, root = sandbox
+
+        with pytest.raises(FileNotFoundError, match="nope.bin"):
+            read_bytes(access, str(root / "nope.bin"))
+
+    def test_an_oversized_write_is_refused_before_it_is_attempted(self, sandbox):
+        """It would otherwise fail as "Argument list too long", which names the
+        shell rather than the limit."""
+        access, root = sandbox
+
+        with pytest.raises(ValueError, match=str(MAX_WRITE_BYTES)):
+            write_bytes(access, str(root / "big.bin"), b"x" * (MAX_WRITE_BYTES + 1))
+
+        assert not (root / "big.bin").exists()
+
+    def test_an_oversized_read_is_refused_by_size_not_by_transferring_it(self, sandbox, monkeypatch):
+        access, root = sandbox
+        target = root / "huge.bin"
+        target.write_bytes(b"x" * 32)
+
+        # Patched rather than writing 32 MiB: the check reads `stat` first, and
+        # that ordering is the point of the test.
+        real_exec = access.exec
+
+        def fake_exec(command, timeout_s=120):
+            if command.startswith("stat "):
+                return 0, str(MAX_READ_BYTES + 1), ""
+            raise AssertionError(f"transferred anyway: {command[:40]}")
+
+        monkeypatch.setattr(access, "exec", fake_exec, raising=False)
+        with pytest.raises(ValueError, match="larger than this reads"):
+            read_bytes(access, str(target))
+        assert real_exec

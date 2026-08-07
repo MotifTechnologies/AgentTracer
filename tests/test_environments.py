@@ -177,3 +177,25 @@ class TestFromEnv:
         assert resolve("data.csv", "/work") == "/work/data.csv"
         assert resolve("/etc/hosts", "/work") == "/etc/hosts"
         assert resolve("data.csv", "/work/") == "/work/data.csv"
+
+    def test_resolve_refuses_a_home_it_cannot_know(self):
+        """`~` is the sandbox's home directory and this function has no way to
+        learn it. Paths are shell-quoted on the way out, so a `~` survives as a
+        literal: the read misses and the write makes a directory called `~`
+        that nothing else looks in."""
+        for path in ("~", "~/data.csv", "~someone/data.csv"):
+            with pytest.raises(ValueError, match="~"):
+                resolve(path, "/work")
+
+    def test_resolve_refuses_an_empty_path(self):
+        """`f"{workdir}/{''}"` is the working directory with a trailing slash,
+        which reads as a successfully resolved path and is a missing argument."""
+        with pytest.raises(ValueError):
+            resolve("", "/work")
+
+    def test_resolve_does_not_police_dot_dot(self):
+        """Deliberate. Every tool documents its path as "absolute or relative to
+        the working directory" and `/etc/hosts` is passed through above, so a
+        containment check here would stop nothing a caller cannot do by writing
+        the path out in full. The sandbox is the boundary, not this function."""
+        assert resolve("../shared/data.csv", "/work") == "/work/../shared/data.csv"

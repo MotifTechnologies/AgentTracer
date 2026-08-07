@@ -129,5 +129,22 @@ def from_env(environ: dict[str, str] | None = None) -> tuple[SandboxAccess, str]
 
 
 def resolve(path: str, workdir: str) -> str:
-    """A relative path, against the directory the agent's commands run in."""
+    """A relative path, against the directory the agent's commands run in.
+
+    An absolute path is returned as given. There is deliberately no containment
+    check on `..`: every tool documents its path as "absolute or relative to the
+    working directory", so one would stop nothing a caller cannot do by writing
+    the path out in full. The sandbox is the boundary, not this function.
+    """
+    if not path:
+        raise ValueError("path is empty — name a file, or '.' for the working directory")
+    if path.startswith("~"):
+        # `~` is the sandbox's home directory, which this has no way to learn.
+        # Paths are shell-quoted on the way out, so it survives as a literal:
+        # the read misses, and the write makes a directory named `~` that
+        # nothing else ever looks in.
+        raise ValueError(
+            f"{path!r} starts with '~', which is not expanded here. Give an absolute "
+            "path, or one relative to the working directory."
+        )
     return path if path.startswith("/") else f"{workdir.rstrip('/')}/{path}"

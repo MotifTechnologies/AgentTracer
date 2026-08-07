@@ -22,6 +22,7 @@ told 0.1 + 0.2 is 0.30000000000000004.
 """
 
 import ast
+import math
 import operator
 from decimal import Decimal, DivisionByZero, Inexact, InvalidOperation, getcontext
 
@@ -35,14 +36,29 @@ mcp = MCPServer(name="calculator", version="0.1.0")
 #: actually asks for; what still does not fit is reported, not hidden.
 getcontext().prec = 200
 
+def _divmod(left: Decimal, right: Decimal) -> tuple[Decimal, Decimal]:
+    """Python's `divmod`, which Decimal's does not match.
+
+    Decimal truncates toward zero, so `-7 // 2` is -3 and `-7 % 2` is -1. The
+    expression was written and parsed as Python, where they are -4 and 1, and
+    an off-by-one quotient is the kind of answer that gets used rather than
+    questioned.
+    """
+    quotient, remainder = divmod(left, right)
+    if remainder and (remainder < 0) != (right < 0):
+        quotient -= 1
+        remainder += right
+    return quotient, remainder
+
+
 _BINARY = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
     ast.Mult: operator.mul,
     ast.Div: operator.truediv,
-    ast.Mod: operator.mod,
+    ast.Mod: lambda a, b: _divmod(a, b)[1],
     ast.Pow: operator.pow,
-    ast.FloorDiv: operator.floordiv,
+    ast.FloorDiv: lambda a, b: _divmod(a, b)[0],
 }
 _UNARY = {ast.UAdd: operator.pos, ast.USub: operator.neg}
 
@@ -56,8 +72,20 @@ def _eval(node: ast.AST) -> Decimal:
             return _eval(node.body)
         case ast.Constant(value=bool()):
             raise ValueError("booleans are not numbers here")
-        case ast.Constant(value=int() | float() | str() as value):
+        case ast.Constant(value=int() as value):
+            return Decimal(value)
+        case ast.Constant(value=float() as value):
+            # A literal too large for a float is already inf by the time it is
+            # parsed, and went on to answer "Infinity" as if that were a number.
+            if not math.isfinite(value):
+                raise ValueError(
+                    "a number in this expression is too large to represent — it reads as infinity"
+                )
+            # Via str: the shortest representation that reads back as the same
+            # float, so 0.1 is 0.1 rather than the binary value behind it.
             return Decimal(str(value))
+        case ast.Constant(value=str()):
+            raise ValueError("a string is not a number here — remove the quotes")
         case ast.UnaryOp(op=op) if type(op) in _UNARY:
             return _UNARY[type(op)](_eval(node.operand))
         case ast.BinOp(op=op) if type(op) in _BINARY:

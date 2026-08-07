@@ -27,6 +27,13 @@ EXACT = [
     # 61 digits. Formatted as a plain integer, a rounded answer here is
     # indistinguishable from the real one — the failure the tool is for.
     ("2 ** 200", str(2**200)),
+    # The expression is written and parsed as Python, so `//` and `%` have to
+    # floor the way Python does. Decimal truncates toward zero and would answer
+    # -3 and -1, which are wrong for what was asked.
+    ("-7 // 2", "-4"),
+    ("-7 % 2", "1"),
+    ("7 // -2", "-4"),
+    ("7 % -2", "-1"),
 ]
 
 REFUSED = [
@@ -36,6 +43,13 @@ REFUSED = [
     "1 / 0",
     "9 ** 99999",
     "1 +",
+    # A string is not a number. `Decimal(str(value))` accepted one, so this
+    # answered 8 — arithmetic on something that was never arithmetic.
+    '"5" + "3"',
+    # Parses as a float literal, which is already inf by the time it is seen.
+    # It answered "Infinity", which is not a number a rubric can check.
+    "1e400",
+    "1e400 - 1e400",
 ]
 
 

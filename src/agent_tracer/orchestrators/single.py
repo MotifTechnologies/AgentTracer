@@ -101,17 +101,17 @@ def _materialized_attachments(task: Task) -> Iterator[Path | None]:
         shutil.rmtree(root, ignore_errors=True)
 
 
-def _describe_sandbox(config: RunConfig, provider: Any) -> dict[str, str]:
+def _describe_sandbox(env_config: Any, provider: Any) -> dict[str, str]:
     """What an out-of-process tool needs to reach this task's sandbox."""
     from agent_tracer.environments import describe
     from agent_tracer.mcp.discovery import sandbox_env
 
     return sandbox_env(
-        env_type=config.environment.type,
+        env_type=env_config.type,
         # Resolved, not as written: `api_key: env:SANDBOX_API_KEY` has to reach
         # `attach()` as the key. Unresolvable already aborted at startup.
-        options=config.environment.resolved_options(),
-        **describe(config.environment, provider),
+        options=env_config.resolved_options(),
+        **describe(env_config, provider),
     )
 
 
@@ -156,7 +156,13 @@ class SingleAgentOrchestrator:
 
         from agent_tracer.environments import build_provider
 
-        exec_provider = build_provider(self.config.environment, task_id=task.task_id)
+        # Fixed once per task, then used for both the sandbox and the sandbox
+        # description: an MCP server told a different working directory than the
+        # one the agent got would resolve every relative path into nothing.
+        env_config = self.config.environment.model_copy(
+            update={"working_dir": self.config.environment.task_working_dir()}
+        )
+        exec_provider = build_provider(env_config, task_id=task.task_id)
 
         # The sandbox is entered here rather than by `agent.session()` with
         # everything else. An MCP server that works on the agent's files has to
@@ -177,7 +183,7 @@ class SingleAgentOrchestrator:
 
                 tools.append(
                     TimeoutMCPToolProvider(
-                        self._task_mcp_config(exec_provider), self.manifests or {}
+                        self._task_mcp_config(exec_provider, env_config), self.manifests or {}
                     )
                 )
 
@@ -187,11 +193,18 @@ class SingleAgentOrchestrator:
             # only needed until the bytes are in the sandbox.
             with _materialized_attachments(task) as workspace:
                 if workspace is not None:
-                    await exec_provider.upload_files(workspace)
+                    # dest_dir is required, not cosmetic: without it the local
+                    # backend nests everything under the temp dir's generated
+                    # name, so `finance/invoices.csv` lands at
+                    # `agent_tracer_attach_x9f2/finance/invoices.csv` and the
+                    # agent burns turns hunting for a path the task named. The
+                    # backends also disagree — only the local one renames — so
+                    # the layout has to be pinned here.
+                    await exec_provider.upload_files(workspace, dest_dir=".")
 
             return await self._run_agent(task, trajectory, agent_id, recorder, tools)
 
-    def _task_mcp_config(self, provider: Any) -> Any:
+    def _task_mcp_config(self, provider: Any, env_config: Any) -> Any:
         """The MCP config for this task, told which sandbox to work on."""
         if not self.manifests or self.mcp_root is None:
             return self.mcp_config
@@ -199,7 +212,7 @@ class SingleAgentOrchestrator:
         from agent_tracer.mcp.discovery import build_stirrup_mcp_config
 
         return build_stirrup_mcp_config(
-            self.manifests, self.mcp_root, _describe_sandbox(self.config, provider)
+            self.manifests, self.mcp_root, _describe_sandbox(env_config, provider)
         )
 
     async def _run_agent(

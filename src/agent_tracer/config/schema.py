@@ -97,6 +97,11 @@ class EnvironmentConfig(StrictModel):
     type: str = "local"
     image: str | None = None
     working_dir: str = "/workspace"
+    # A constant working directory is a constant in every trajectory: train on
+    # them and the model learns `/workspace` as a fact about the world rather
+    # than as one path it was told. Randomised per task, the path stays
+    # something to read out of the task, not to recall.
+    randomize_working_dir: bool = True
     user: str | None = None  # in-sandbox user, where the backend has one
     shell_timeout: int = 300
     env_vars: list[str] = Field(default_factory=list)
@@ -122,6 +127,19 @@ class EnvironmentConfig(StrictModel):
             "Values take an 'env:VAR_NAME' reference (recommended) or a literal."
         ),
     )
+
+    # Plausible places work would live, so the varied path still reads as a
+    # real one. The suffix is what makes it unlearnable.
+    _WORKDIR_ROOTS = ("/workspace", "/srv/job", "/opt/run", "/data/task", "/home/agent/work")
+
+    def task_working_dir(self) -> str:
+        """The working directory for one task — randomised unless pinned."""
+        if not self.randomize_working_dir:
+            return self.working_dir
+        import secrets
+
+        root = secrets.choice(self._WORKDIR_ROOTS)
+        return f"{root}_{secrets.token_hex(3)}"
 
     def resolved_options(self) -> dict[str, str]:
         """`options` with its `env:` references resolved.

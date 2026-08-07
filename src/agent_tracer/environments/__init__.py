@@ -163,10 +163,18 @@ def resolve(path: str, workdir: str) -> str:
     return path if path.startswith("/") else f"{workdir.rstrip('/')}/{path}"
 
 
-#: A write is one shell command, so the encoded bytes ride in the argument list.
-#: ARG_MAX is 2 MiB on Linux and the command carries more than the payload, so
-#: this leaves generous headroom. Larger files are a job for `code_exec`.
+#: The encoded bytes ride in the argument list, so a write is several shell
+#: commands rather than one — see `WRITE_CHUNK_BYTES`. What is left to cap here
+#: is how many round trips a single call is worth; larger files are a job for
+#: `code_exec`, which generates them in the sandbox and never moves them.
 MAX_WRITE_BYTES = 1 << 20
+
+#: Raw bytes per `exec`. The binding limit is not ARG_MAX (2 MiB) but
+#: MAX_ARG_STRLEN, 128 KiB for a *single* argv string — and the whole script is
+#: one argument to `sh -c`. base64's 4/3 expansion put the real ceiling at
+#: 98,244 bytes: 64 KiB encodes to 87 KiB and leaves room for the rest of the
+#: script.
+WRITE_CHUNK_BYTES = 64 << 10
 
 #: A read comes back on stdout rather than in argv, so it can afford more — but
 #: not unboundedly: it is held in memory here and base64 costs a third again.
@@ -239,9 +247,32 @@ def read_bytes(access: SandboxAccess, path: str, *, timeout_s: float = 60) -> by
     return data
 
 
+def _parent(path: str) -> str:
+    """The directory `path` sits in — "." when it names no directory at all.
+
+    `path.rsplit("/", 1)[0] or "/"` answers "a.txt" for "a.txt", and `mkdir -p`
+    then makes a directory of that name.
+    """
+    head, sep, _ = path.rpartition("/")
+    return head or ("/" if sep else ".")
+
+
 def write_bytes(access: SandboxAccess, path: str, data: bytes, *, timeout_s: float = 60) -> None:
-    """Put exact bytes into a sandbox that only offers `exec`."""
+    """Put exact bytes into a sandbox that only offers `exec`.
+
+    Sent in `WRITE_CHUNK_BYTES` pieces, because the encoded payload rides in the
+    argument list and one argv string is capped well below ARG_MAX. Each piece
+    is decoded by its own `base64 -d`, so the split is at a whole number of
+    bytes and padding stays correct.
+
+    Staged on a sibling and moved over the destination at the end. Redirecting
+    onto the destination has the shell truncate it before `base64` emits a byte,
+    so a full disk or a timeout killing `docker exec` partway left the agent's
+    only workbook truncated while this reported that it had failed to write —
+    and `write_cells` always overwrites in place.
+    """
     import base64
+    import os
     import shlex
 
     if len(data) > MAX_WRITE_BYTES:
@@ -249,12 +280,31 @@ def write_bytes(access: SandboxAccess, path: str, data: bytes, *, timeout_s: flo
             f"{len(data)} bytes is larger than this writes ({MAX_WRITE_BYTES}). "
             "Generate the file with code_exec inside the sandbox instead."
         )
-    encoded = base64.b64encode(data).decode("ascii")
-    parent = path.rsplit("/", 1)[0] or "/"
-    script = (
-        f"mkdir -p {shlex.quote(parent)} && "
-        f"printf %s {shlex.quote(encoded)} | base64 -d > {shlex.quote(path)}"
-    )
-    rc, out, err = access.exec(script, timeout_s=timeout_s)
-    if rc != 0:
-        raise OSError(f"Could not write {path}: {(err.strip() or out.strip())[:200]}")
+
+    staged = shlex.quote(f"{path}.agent-tracer.{os.getpid()}")
+    prologue = f"mkdir -p {shlex.quote(_parent(path))} && "
+    # One chunk even for no bytes at all, so an empty file is still created.
+    chunks = [data[at : at + WRITE_CHUNK_BYTES] for at in range(0, len(data), WRITE_CHUNK_BYTES)] or [b""]
+
+    def run(script: str) -> None:
+        rc, out, err = access.exec(script, timeout_s=timeout_s)
+        if rc != 0:
+            raise OSError(f"Could not write {path}: {(err.strip() or out.strip())[:200]}")
+
+    try:
+        for index, chunk in enumerate(chunks):
+            encoded = shlex.quote(base64.b64encode(chunk).decode("ascii"))
+            redirect = ">" if index == 0 else ">>"
+            run(
+                (prologue if index == 0 else "")
+                + f"printf %s {encoded} | base64 -d {redirect} {staged}"
+            )
+        run(f"mv -f {staged} {shlex.quote(path)}")
+    except BaseException:
+        # Best effort: the sandbox may be the thing that died, and the original
+        # failure is the one worth reporting.
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            access.exec(f"rm -f {staged}", timeout_s=30)
+        raise

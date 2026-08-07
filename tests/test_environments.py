@@ -21,6 +21,7 @@ from agent_tracer.environments import (
     BUILTIN,
     MAX_READ_BYTES,
     MAX_WRITE_BYTES,
+    WRITE_CHUNK_BYTES,
     _load,
     describe,
     from_env,
@@ -306,6 +307,87 @@ class TestByteTransfer:
             write_bytes(access, str(root / "big.bin"), b"x" * (MAX_WRITE_BYTES + 1))
 
         assert not (root / "big.bin").exists()
+
+    def test_a_write_past_one_argv_string_still_arrives_exact(self, sandbox):
+        """The band the guard never covered.
+
+        A single argv string is capped at MAX_ARG_STRLEN (128 KiB) whatever
+        ARG_MAX says, and the whole script is one argument to `sh -c`. base64's
+        expansion put the real ceiling at 98,244 bytes, so everything from there
+        up to MAX_WRITE_BYTES died as `OSError [Errno 7]` raised by
+        `subprocess.run` before a shell existed — never reaching the `rc != 0`
+        check, so the guard's message never appeared. A workbook clears 100 KB
+        routinely.
+        """
+        access, root = sandbox
+        payload = bytes(range(256)) * 1600  # 409,600 bytes, inside the old band
+
+        write_bytes(access, str(root / "book.xlsx"), payload)
+
+        assert read_bytes(access, str(root / "book.xlsx")) == payload
+
+    def test_nothing_redirects_onto_the_destination(self, sandbox, monkeypatch):
+        """`> path` has the shell truncate the target before base64 emits a
+        byte. A full disk, or a timeout killing `docker exec` partway, then
+        leaves the agent's only workbook truncated while the tool reports that
+        it failed to write — and `write_cells` always overwrites in place. The
+        bytes have to land on a sibling and be moved over it.
+        """
+        import re
+        import shlex
+
+        access, root = sandbox
+        target = root / "book.xlsx"
+        target.write_bytes(b"the original workbook")
+        payload = b"z" * (WRITE_CHUNK_BYTES + 1)
+
+        seen = []
+        real = access.exec
+
+        def record(command, timeout_s=120):
+            seen.append(command)
+            return real(command, timeout_s=timeout_s)
+
+        monkeypatch.setattr(access, "exec", record, raising=False)
+        write_bytes(access, str(target), payload)
+
+        assert target.read_bytes() == payload
+        # The staging file is a sibling, so match the redirect target whole.
+        redirect = re.compile(rf">>?\s*{re.escape(shlex.quote(str(target)))}(\s|$)")
+        assert not [c[:60] for c in seen if redirect.search(c)], "the destination is truncated first"
+        assert any(c.startswith("mv ") for c in seen), [c[:60] for c in seen]
+
+    def test_a_write_that_fails_partway_leaves_the_original(self, sandbox, monkeypatch):
+        access, root = sandbox
+        target = root / "book.xlsx"
+        target.write_bytes(b"the original workbook")
+
+        real, calls = access.exec, []
+
+        def full_disk_after_the_first_chunk(command, timeout_s=120):
+            calls.append(command)
+            if "base64 -d" in command and len([c for c in calls if "base64 -d" in c]) > 1:
+                return 1, "", "printf: write error: No space left on device"
+            return real(command, timeout_s=timeout_s)
+
+        monkeypatch.setattr(access, "exec", full_disk_after_the_first_chunk, raising=False)
+        with pytest.raises(OSError, match="book.xlsx"):
+            write_bytes(access, str(target), b"z" * (WRITE_CHUNK_BYTES * 3))
+
+        assert target.read_bytes() == b"the original workbook"
+        assert not list(root.glob("book.xlsx.*")), "the staging file was left behind"
+
+    def test_a_bare_filename_is_written_not_made_into_a_directory(self, sandbox):
+        """`path.rsplit("/", 1)[0] or "/"` answers "a.txt" for "a.txt", so
+        `mkdir -p` made a directory of that name and the redirect then failed
+        with "Is a directory". Callers pass absolute paths today; these are
+        public helpers."""
+        access, root = sandbox  # the fixture is already chdir'd into root
+
+        write_bytes(access, "note.txt", b"hello")
+
+        assert (root / "note.txt").is_file()
+        assert (root / "note.txt").read_bytes() == b"hello"
 
     def test_an_oversized_read_is_refused_by_size_not_by_transferring_it(self, sandbox, monkeypatch):
         access, root = sandbox

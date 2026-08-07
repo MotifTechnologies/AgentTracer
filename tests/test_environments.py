@@ -9,6 +9,9 @@ file" rather than failing where the mistake is.
 
 from __future__ import annotations
 
+import subprocess
+import sys
+import textwrap
 from types import SimpleNamespace
 
 import pytest
@@ -33,6 +36,31 @@ class TestRegistry:
             module = _load(name)
             for func in ("build", "describe", "attach"):
                 assert callable(getattr(module, func, None)), f"{name}.{func} missing"
+
+    def test_attach_needs_nothing_only_the_runner_has(self):
+        """A spawned MCP server has `agent_tracer` on PYTHONPATH and whatever it
+        declares for itself. stirrup belongs to the runner that spawned it, so a
+        backend importing its provider at module level makes `attach` unusable
+        from a server: the first tool call on that backend dies with
+        ModuleNotFoundError rather than doing the work.
+        """
+        script = textwrap.dedent(
+            """
+            import sys
+
+            sys.modules["stirrup"] = None  # as absent as it is in a server
+
+            from agent_tracer.environments import attach
+
+            for backend in ("local", "docker", "e2b"):
+                attach(backend, "some-id", {})
+            """
+        )
+        done = subprocess.run(
+            [sys.executable, "-c", script], capture_output=True, text=True, check=False
+        )
+
+        assert done.returncode == 0, done.stderr
 
     def test_an_uninstalled_backend_names_the_ones_that_are(self):
         with pytest.raises(ConfigError) as e:

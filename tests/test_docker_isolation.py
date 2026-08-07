@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 
-from agent_tracer.environments.docker import IsolatedDockerCodeExecToolProvider
+from agent_tracer.environments.docker_provider import IsolatedDockerCodeExecToolProvider
 
 
 def _provider(**kwargs) -> IsolatedDockerCodeExecToolProvider:

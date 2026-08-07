@@ -233,8 +233,10 @@ def search_content(pattern: str, path: str = ".", max_results: int = 100) -> dic
         max_results: Stop after this many matching lines.
     """
     target = _abs(path)
+    # `-H` because grep omits the filename prefix when it is given exactly one
+    # file operand, even under `-r` — and every match here is parsed on it.
     rc, out, err = _run(
-        f"grep -rnIE {shlex.quote(pattern)} {shlex.quote(target)} 2>/dev/null | "
+        f"grep -rHnIE {shlex.quote(pattern)} {shlex.quote(target)} 2>/dev/null | "
         f"head -n {int(max_results)}"
     )
     # grep exits 1 for "no matches", which is an answer rather than a failure.

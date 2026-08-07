@@ -125,6 +125,16 @@ async def main() -> None:
         assert out["count"] == 1 and out["matches"][0]["line"] == 2, out
         print("search_content -> ok, line numbers and non-ASCII")
 
+        # The docstring says "File or directory", and grep drops the filename
+        # prefix when given exactly one file operand — even under -r. Parsed on
+        # that prefix, the match disappears and the tool reports count 0.
+        out = _payload(await session.call_tool("search_content", {
+            "pattern": "중간보고서", "path": "sub/data.csv"}))
+        assert out["count"] == 1, out
+        assert out["matches"][0]["line"] == 2, out
+        assert out["matches"][0]["path"].endswith("sub/data.csv"), out
+        print("search_content on one file -> ok, the match is not dropped")
+
         # No matches is an answer, not a failure — grep exits 1 for it.
         out = _payload(await session.call_tool("search_content", {"pattern": "zzz-nothing"}))
         assert out["count"] == 0, out

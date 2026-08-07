@@ -312,12 +312,12 @@ class TestByteTransfer:
         target = root / "huge.bin"
         target.write_bytes(b"x" * 32)
 
-        # Patched rather than writing 32 MiB: the check reads `stat` first, and
-        # that ordering is the point of the test.
+        # Patched rather than writing 32 MiB: the check sizes the file first,
+        # and that ordering is the point of the test.
         real_exec = access.exec
 
         def fake_exec(command, timeout_s=120):
-            if command.startswith("stat "):
+            if command.startswith("wc "):
                 return 0, str(MAX_READ_BYTES + 1), ""
             raise AssertionError(f"transferred anyway: {command[:40]}")
 
@@ -325,3 +325,98 @@ class TestByteTransfer:
         with pytest.raises(ValueError, match="larger than this reads"):
             read_bytes(access, str(target))
         assert real_exec
+
+
+class TestContaminatedStdout:
+    """What `exec` hands back is not only the file.
+
+    `docker exec` runs `sh -lc`, a *login* shell, so `/etc/profile` and
+    `/etc/profile.d/*` run first and any image that prints `mesg: ttyname
+    failed`, an MOTD or a conda banner puts it on the same stdout as the
+    payload. `b64decode` defaults to `validate=False`, which discards characters
+    outside the alphabet *silently* — so the file comes back a few bytes wrong
+    rather than not at all, and a PDF or an .xlsx that is one byte wrong is a
+    file that no longer opens.
+    """
+
+    BANNER = "mesg: ttyname failed: Inappropriate ioctl for device\n"
+
+    @pytest.fixture
+    def sandbox(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        access, _ = from_env({})
+        return access, tmp_path
+
+    def _wrap(self, access, monkeypatch, transform):
+        real = access.exec
+
+        def wrapped(command, timeout_s=120):
+            rc, out, err = real(command, timeout_s=timeout_s)
+            return rc, transform(command, out), err
+
+        monkeypatch.setattr(access, "exec", wrapped, raising=False)
+
+    def test_a_banner_before_the_payload_names_the_file(self, sandbox, monkeypatch):
+        access, root = sandbox
+        target = root / "book.xlsx"
+        target.write_bytes(bytes(range(256)) * 4)
+        self._wrap(access, monkeypatch, lambda c, out: out if "wc " in c else self.BANNER + out)
+
+        with pytest.raises(OSError, match="book.xlsx"):
+            read_bytes(access, str(target))
+
+    def test_a_banner_before_the_size_names_the_file(self, sandbox, monkeypatch):
+        """`int(out.strip() or 0)` raised a bare ValueError naming nothing."""
+        access, root = sandbox
+        target = root / "book.xlsx"
+        target.write_bytes(b"abc")
+        self._wrap(access, monkeypatch, lambda c, out: self.BANNER + out if "wc " in c else out)
+
+        with pytest.raises(OSError, match="book.xlsx"):
+            read_bytes(access, str(target))
+
+    def test_a_short_transfer_is_caught_by_the_size_already_fetched(self, sandbox, monkeypatch):
+        """A whole base64 quantum missing still decodes, to a shorter file."""
+        access, root = sandbox
+        target = root / "book.xlsx"
+        target.write_bytes(bytes(range(256)))
+        self._wrap(access, monkeypatch, lambda c, out: out if "wc " in c else out.strip()[:-8])
+
+        with pytest.raises(OSError, match="book.xlsx"):
+            read_bytes(access, str(target))
+
+    def test_base64_wrapped_at_76_columns_still_arrives_exact(self, sandbox, monkeypatch):
+        """The cost of dropping `-w0`, which is the flag BSD's base64 lacks."""
+        import textwrap
+
+        access, root = sandbox
+        payload = bytes(range(256)) * 4
+        target = root / "book.xlsx"
+        target.write_bytes(payload)
+        self._wrap(
+            access,
+            monkeypatch,
+            lambda c, out: out if "wc " in c else "\n".join(textwrap.wrap(out.strip(), 76)) + "\n",
+        )
+
+        assert read_bytes(access, str(target)) == payload
+
+    def test_the_transfer_asks_for_no_option_a_BSD_shell_lacks(self, sandbox, monkeypatch):
+        """`stat -c %s` and `base64 -w0` are GNU/busybox only. On a BSD or macOS
+        local backend they fail, and the failure was reported as
+        `FileNotFoundError: No such file in the sandbox` — blaming the file for
+        a missing flag."""
+        access, root = sandbox
+        (root / "f.bin").write_bytes(b"abc")
+
+        seen = []
+        real = access.exec
+
+        def record(command, timeout_s=120):
+            seen.append(command)
+            return real(command, timeout_s=timeout_s)
+
+        monkeypatch.setattr(access, "exec", record, raising=False)
+        read_bytes(access, str(root / "f.bin"))
+
+        assert not [c for c in seen if "stat -c" in c or "-w0" in c], seen

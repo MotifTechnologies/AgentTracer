@@ -173,34 +173,70 @@ MAX_WRITE_BYTES = 1 << 20
 MAX_READ_BYTES = 32 << 20
 
 
+#: What else lands on the same stdout as the payload. `docker exec` runs
+#: `sh -lc`, a *login* shell, so `/etc/profile` and `/etc/profile.d/*` run
+#: before the command does and an image that prints `mesg: ttyname failed`, an
+#: MOTD or a conda banner prints it there.
+_CONTAMINATED = (
+    "The sandbox printed something alongside the file. A login shell runs "
+    "/etc/profile first, and an MOTD or a conda banner lands on the same stdout "
+    "as the payload."
+)
+
+
 def read_bytes(access: SandboxAccess, path: str, *, timeout_s: float = 60) -> bytes:
     """The file's exact bytes, out of a sandbox that only offers `exec`.
 
     Base64 because a shell hands back text, and a task's files are not reliably
     UTF-8 — a scanned PDF or an .xlsx is not text at all.
+
+    What comes back is checked rather than trusted, twice: the encoding has to
+    be nothing but base64, and the decoded length has to be the size `stat`
+    already reported. Neither check is spare. `b64decode` defaults to
+    `validate=False` and *discards* anything outside the alphabet silently, so a
+    banner on stdout returns a file a few bytes wrong instead of an error — and
+    a PDF or an .xlsx one byte wrong is a file that no longer opens.
     """
     import base64
+    import binascii
     import shlex
 
     quoted = shlex.quote(path)
+    # `wc -c` rather than `stat -c %s`: `-c` is GNU/busybox, and on a BSD or
+    # macOS local backend the missing flag would be reported as a missing file.
     # Checked first so an oversized file fails saying so, rather than after
     # transferring most of it.
-    rc, out, _ = access.exec(f"stat -c %s {quoted}", timeout_s=30)
+    rc, out, _ = access.exec(f"wc -c < {quoted}", timeout_s=30)
     if rc != 0:
         raise FileNotFoundError(f"No such file in the sandbox: {path}")
-    size = int(out.strip() or 0)
+    # Strictly one number and nothing else. Picking the last field out of a
+    # noisy reply would read "Last login: ... 2026" as a 2026-byte file.
+    fields = out.split()
+    if len(fields) != 1 or not fields[0].isdigit():
+        raise OSError(f"Could not size {path}: {out.strip()[:200]!r} is not a byte count. {_CONTAMINATED}")
+    size = int(fields[0])
     if size > MAX_READ_BYTES:
         raise ValueError(
             f"{path} is {size} bytes, larger than this reads ({MAX_READ_BYTES}). "
             "Work on it with code_exec inside the sandbox instead."
         )
 
-    # `-w0`: GNU base64 wraps at 76 columns by default and the newlines would
-    # have to be stripped back out.
-    rc, out, err = access.exec(f"base64 -w0 {quoted}", timeout_s=timeout_s)
+    # No `-w0`, which BSD's base64 does not have: GNU wraps at 76 columns
+    # without it, and unwrapping costs one `split`.
+    rc, out, err = access.exec(f"base64 < {quoted}", timeout_s=timeout_s)
     if rc != 0:
         raise OSError(f"Could not read {path}: {(err.strip() or out.strip())[:200]}")
-    return base64.b64decode(out.strip())
+
+    try:
+        data = base64.b64decode("".join(out.split()), validate=True)
+    except binascii.Error as exc:
+        raise OSError(f"Could not decode {path} out of the sandbox: {exc}. {_CONTAMINATED}") from exc
+    if len(data) != size:
+        raise OSError(
+            f"Read {len(data)} bytes of {path}, which is {size} — the transfer was "
+            f"truncated, or it was not only the file. {_CONTAMINATED}"
+        )
+    return data
 
 
 def write_bytes(access: SandboxAccess, path: str, data: bytes, *, timeout_s: float = 60) -> None:

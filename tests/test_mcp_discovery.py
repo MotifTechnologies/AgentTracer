@@ -89,6 +89,24 @@ class TestDiscovery:
         assert "echo" in manifests
 
 
+class TestPackagedManifests:
+    def test_every_manifest_validates_against_the_schema_it_names(self):
+        """The loader aliases `$schema` away before pydantic sees it, so a
+        manifest that no validator would accept still ran. Every packaged
+        manifest opens with the key, and the schema forbids what it does not
+        declare — `'$schema' was unexpected` for all six."""
+        import jsonschema  # a dependency of `mcp`, which the runner requires
+
+        root = Path(agent_tracer.__file__).parent / "mcp_servers"
+        validator = jsonschema.Draft202012Validator(
+            json.loads((root / "mcp.schema.json").read_text("utf-8"))
+        )
+
+        for path in sorted(root.glob("*/mcp.json")):
+            errors = [e.message for e in validator.iter_errors(json.loads(path.read_text("utf-8")))]
+            assert not errors, f"{path}: {errors}"
+
+
 class TestPackagePath:
     """What every stdio server is handed as PYTHONPATH.
 

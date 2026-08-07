@@ -12,6 +12,10 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "This schema, so an editor can complete and check the manifest as it is written. Every packaged manifest opens with \"../mcp.schema.json\"; declared here because additionalProperties is false and a manifest that names its schema must still validate against it."
+    },
     "manifest_version": {
       "const": 1,
       "description": "Manifest schema version. Bump only with a coordinated runner change."

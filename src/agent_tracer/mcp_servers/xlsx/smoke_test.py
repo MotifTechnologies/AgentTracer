@@ -24,6 +24,7 @@ import datetime as dt
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 
 from mcp import ClientSession, StdioServerParameters
@@ -64,6 +65,24 @@ def _build(path: Path) -> None:
     wb.save(path)
 
 
+def _build_sparse(path: Path) -> None:
+    """Two cells, 4.8 KB, and a used range of 2.08 million coordinates.
+
+    openpyxl instantiates a Cell for every coordinate in the used range when it
+    is not in read-only mode, so `list(sheet.iter_rows())` — on two workbook
+    copies, which is what reading formulas and values costs — turns this file
+    into gigabytes. The server runs outside the sandbox with no cgroup limit,
+    so a 4.8 KB file could take the runner host down with it.
+    """
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws["A1"] = "corner"
+    ws["CZ20000"] = "far"
+    wb.save(path)
+
+
 def _build_with_chart(path: Path) -> None:
     import openpyxl
     from openpyxl.chart import BarChart, Reference
@@ -82,6 +101,7 @@ async def main() -> None:
     workdir = Path(tempfile.mkdtemp())
     _build(workdir / "sales.xlsx")
     _build_with_chart(workdir / "charted.xlsx")
+    _build_sparse(workdir / "sparse.xlsx")
     (workdir / "not-a.xlsx").write_text("plain text\n", encoding="utf-8")
 
     params = StdioServerParameters(
@@ -153,6 +173,32 @@ async def main() -> None:
             "find_cells", {"path": "sales.xlsx", "pattern": "SUM"}))
         assert any(m["formula"] == "=SUM(D2:D4)" for m in out["matches"]), out
         print("find_cells matches formulas too -> ok")
+
+        # A 4.8 KB file must not cost the host gigabytes. The window is capped
+        # before anything is materialised, and skipped cells count towards it.
+        started = time.monotonic()
+        out = _payload(await session.call_tool("read_range", {"path": "sparse.xlsx"}))
+        elapsed = time.monotonic() - started
+        assert out["truncated"], out
+        assert out["count"] <= 2000, out["count"]
+        assert not any(c["ref"] == "CZ20000" for c in out["cells"]), "walked the whole used range"
+        assert out["range"].endswith(":CZ19"), out["range"]  # 2000 // 104 columns
+        assert elapsed < 15, f"took {elapsed:.1f}s — the used range was materialised"
+        print(f"read_range over a 2.08M-coordinate used range -> {out['range']}, {elapsed:.2f}s")
+
+        out = _payload(await session.call_tool(
+            "read_range", {"path": "sparse.xlsx", "cell_range": "A1:CZ20000"}))
+        assert out["truncated"] and out["count"] <= 2000, out
+        print("read_range with an oversized explicit range -> capped the same way")
+
+        started = time.monotonic()
+        out = _payload(await session.call_tool(
+            "find_cells", {"path": "sparse.xlsx", "pattern": "no-such-label"}))
+        elapsed = time.monotonic() - started
+        assert out["count"] == 0 and out["truncated"], out
+        assert out["note"] and "scan" in out["note"], out["note"]
+        assert elapsed < 15, f"took {elapsed:.1f}s"
+        print(f"find_cells with no match -> stops on its scan budget, {elapsed:.2f}s")
 
         # Write, then verify against the file itself rather than the reply.
         out = _payload(await session.call_tool("write_cells", {

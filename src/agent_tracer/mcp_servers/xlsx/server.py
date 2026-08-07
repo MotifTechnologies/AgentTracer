@@ -43,7 +43,18 @@ mcp = MCPServer(name="xlsx", version="0.1.0")
 DEFAULT_TIMEOUT_S = 120
 
 #: A full sheet can be a million cells. The reply says when it truncated.
+#:
+#: Counted against every coordinate *visited*, not against the cells that reach
+#: the reply. Counting only the latter is what let a 4.8 KB workbook holding
+#: just A1 and CZ20000 cost gigabytes: the 2.08 million empty coordinates
+#: between them were skipped without being counted, and openpyxl had already
+#: instantiated a Cell for each of them.
 MAX_CELLS_PER_CALL = 2000
+
+#: `find_cells` walks cells instead of returning them, so it gets a much larger
+#: budget — but a bounded one, and it says when it ran out. A used range
+#: reaching CZ200000 is 20.8 million coordinates.
+MAX_CELLS_SCANNED = 1_000_000
 
 _SANDBOX = None
 
@@ -62,12 +73,20 @@ def _load(path: str) -> tuple[str, bytes]:
     return target, read_bytes(access, target, timeout_s=DEFAULT_TIMEOUT_S)
 
 
-def _workbook(raw: bytes, *, data_only: bool):
+def _workbook(raw: bytes, *, data_only: bool, read_only: bool = False):
+    """Open the workbook.
+
+    `read_only` for anything that walks cells. Outside read-only mode openpyxl
+    builds a Cell object for every coordinate in the used range as soon as
+    `iter_rows` touches it, which is unbounded in the file's *extent* rather
+    than in its size. `list_sheets` needs `.dimensions` and `write_cells` needs
+    to write, and neither is available read-only.
+    """
     import openpyxl
     from openpyxl.utils.exceptions import InvalidFileException
 
     try:
-        return openpyxl.load_workbook(io.BytesIO(raw), data_only=data_only)
+        return openpyxl.load_workbook(io.BytesIO(raw), data_only=data_only, read_only=read_only)
     except InvalidFileException as exc:
         raise ValueError(
             f"Not a readable .xlsx workbook: {exc}. openpyxl does not read the older "
@@ -83,6 +102,43 @@ def _sheet(workbook, name: str | None):
     if name not in workbook.sheetnames:
         raise ValueError(f"No sheet named {name!r}. This workbook has: {', '.join(workbook.sheetnames)}")
     return workbook[name]
+
+
+def _extent(sheet) -> tuple[int, int]:
+    """How far the sheet goes, without trusting a `<dimension>` that is absent."""
+    if sheet.max_row is None or sheet.max_column is None:
+        sheet.calculate_dimension(force=True)
+    return sheet.max_row or 1, sheet.max_column or 1
+
+
+def _window(sheet, cell_range: str | None, budget: int) -> tuple[tuple[int, int, int, int], bool]:
+    """The rectangle to visit, clipped to `budget` coordinates.
+
+    Derived before anything is read, so an explicit "A1:CZ20000" costs no more
+    than the default extent does. Returns (top, left, bottom, right) 1-based and
+    inclusive, and whether the clip lost anything.
+    """
+    from openpyxl.utils import range_boundaries
+
+    rows, columns = _extent(sheet)
+    if cell_range:
+        try:
+            left, top, right, bottom = range_boundaries(cell_range)
+        except ValueError as exc:
+            raise ValueError(f"Could not read range {cell_range!r}: {exc}") from exc
+        # An open range ("A:C", "2:5") leaves the other axis unbounded.
+        top, left = top or 1, left or 1
+        bottom, right = bottom or rows, right or columns
+        if bottom < top or right < left:
+            raise ValueError(f"Could not read range {cell_range!r}: it ends before it starts")
+    else:
+        top, left, bottom, right = 1, 1, rows, columns
+
+    width = min(right - left + 1, budget)
+    height = min(bottom - top + 1, max(1, budget // width))
+    return (top, left, top + height - 1, left + width - 1), (
+        height < bottom - top + 1 or width < right - left + 1
+    )
 
 
 def _jsonable(value):
@@ -128,64 +184,60 @@ def list_sheets(path: str) -> dict:
 def read_range(path: str, sheet: str | None = None, cell_range: str | None = None) -> dict:
     """Read cells, with both their formulas and their computed values.
 
+    At most `MAX_CELLS_PER_CALL` coordinates are visited, empty ones included,
+    so a wide sheet comes back as few rows. `range` says which rectangle was
+    read and `truncated` whether anything was left; ask again with a narrower
+    `cell_range` to get the rest.
+
     Args:
         path: .xlsx file, absolute or relative to the working directory.
         sheet: Sheet name. Defaults to the first sheet.
         cell_range: A1-style range, e.g. "A1:D20". Defaults to the used extent.
     """
+    from openpyxl.utils import get_column_letter
+
     target, raw = _load(path)
-    formulas = _workbook(raw, data_only=False)
-    values = _workbook(raw, data_only=True)
-
-    formula_sheet = _sheet(formulas, sheet)
-    value_sheet = _sheet(values, sheet)
-
+    formulas = _workbook(raw, data_only=False, read_only=True)
+    values = _workbook(raw, data_only=True, read_only=True)
     try:
-        formula_cells = formula_sheet[cell_range] if cell_range else formula_sheet.iter_rows()
-        value_cells = value_sheet[cell_range] if cell_range else value_sheet.iter_rows()
-    except (ValueError, TypeError) as exc:
-        raise ValueError(f"Could not read range {cell_range!r}: {exc}") from exc
+        formula_sheet = _sheet(formulas, sheet)
+        value_sheet = _sheet(values, sheet)
+        (top, left, bottom, right), truncated = _window(formula_sheet, cell_range, MAX_CELLS_PER_CALL)
+        box = {"min_row": top, "min_col": left, "max_row": bottom, "max_col": right}
 
-    def _rows(cells):
-        """Normalise openpyxl's three shapes into rows of cells.
-
-        A range gives a tuple of row-tuples, a single row gives a flat tuple of
-        cells, and a single cell like "D6" gives a bare Cell that is not
-        iterable at all.
-        """
-        if not hasattr(cells, "__iter__"):
-            return [(cells,)]
-        listed = list(cells)
-        if listed and not isinstance(listed[0], tuple):
-            return [tuple(listed)]
-        return listed
-
-    cells, uncomputed, truncated = [], 0, False
-    for frow, vrow in zip(_rows(formula_cells), _rows(value_cells), strict=False):
-        for fcell, vcell in zip(frow, vrow, strict=False):
-            if len(cells) >= MAX_CELLS_PER_CALL:
-                truncated = True
-                break
-            is_formula = isinstance(fcell.value, str) and fcell.value.startswith("=")
-            if fcell.value is None and vcell.value is None:
-                continue
-            if is_formula and vcell.value is None:
-                uncomputed += 1
-            cells.append(
-                {
-                    "ref": fcell.coordinate,
-                    "value": _jsonable(vcell.value),
-                    "formula": fcell.value if is_formula else None,
-                }
-            )
-        if truncated:
-            break
+        cells, uncomputed = [], 0
+        rows = zip(formula_sheet.iter_rows(**box), value_sheet.iter_rows(**box), strict=False)
+        for number, (frow, vrow) in enumerate(rows, start=top):
+            for letter, (fcell, vcell) in enumerate(zip(frow, vrow, strict=False), start=left):
+                if fcell.value is None and vcell.value is None:
+                    continue
+                is_formula = isinstance(fcell.value, str) and fcell.value.startswith("=")
+                if is_formula and vcell.value is None:
+                    uncomputed += 1
+                cells.append(
+                    {
+                        # Built from the indices: read-only mode hands back a
+                        # shared EmptyCell for a gap, which has no coordinate.
+                        "ref": f"{get_column_letter(letter)}{number}",
+                        "value": _jsonable(vcell.value),
+                        "formula": fcell.value if is_formula else None,
+                    }
+                )
+        title = formula_sheet.title
+    finally:
+        formulas.close()
+        values.close()
 
     return {
         "path": target,
-        "sheet": formula_sheet.title,
+        "sheet": title,
+        # What was actually looked at. Without it a reply of one cell and
+        # `truncated: true` says nothing about where to ask next.
+        "range": f"{get_column_letter(left)}{top}:{get_column_letter(right)}{bottom}",
         "cells": cells,
         "count": len(cells),
+        # The window was clipped, not the reply: the cap counts every coordinate
+        # visited, so a sheet that is mostly empty still truncates.
         "truncated": truncated,
         # The trap this server exists to close: a formula whose value is None
         # has not been evaluated by anything, and is not an empty cell.
@@ -215,35 +267,62 @@ def find_cells(path: str, pattern: str, sheet: str | None = None, max_results: i
     if max_results < 1:
         raise ValueError("max_results must be >= 1")
 
+    from openpyxl.utils import get_column_letter
+
     target, raw = _load(path)
-    formulas = _workbook(raw, data_only=False)
-    values = _workbook(raw, data_only=True)
+    formulas = _workbook(raw, data_only=False, read_only=True)
+    values = _workbook(raw, data_only=True, read_only=True)
     needle = pattern.lower()
 
     names = [_sheet(formulas, sheet).title] if sheet else formulas.sheetnames
-    matches = []
-    for name in names:
-        for frow, vrow in zip(
-            formulas[name].iter_rows(), values[name].iter_rows(), strict=False
-        ):
-            for fcell, vcell in zip(frow, vrow, strict=False):
-                if len(matches) >= max_results:
-                    return {"path": target, "pattern": pattern, "matches": matches,
-                            "count": len(matches), "truncated": True}
-                haystacks = [fcell.value, vcell.value]
-                if any(h is not None and needle in str(h).lower() for h in haystacks):
-                    is_formula = isinstance(fcell.value, str) and fcell.value.startswith("=")
-                    matches.append(
-                        {
-                            "sheet": name,
-                            "ref": fcell.coordinate,
-                            "value": _jsonable(vcell.value),
-                            "formula": fcell.value if is_formula else None,
-                        }
-                    )
+    matches, scanned, exhausted = [], 0, False
+    try:
+        for name in names:
+            if exhausted or len(matches) >= max_results:
+                break
+            fsheet, vsheet = formulas[name], values[name]
+            rows, columns = _extent(fsheet)
+            box = {"max_row": rows, "max_col": columns}
+            paired = zip(fsheet.iter_rows(**box), vsheet.iter_rows(**box), strict=False)
+            for number, (frow, vrow) in enumerate(paired, start=1):
+                if exhausted or len(matches) >= max_results:
+                    break
+                for letter, (fcell, vcell) in enumerate(zip(frow, vrow, strict=False), start=1):
+                    if len(matches) >= max_results:
+                        break
+                    if scanned >= MAX_CELLS_SCANNED:
+                        exhausted = True
+                        break
+                    scanned += 1
+                    haystacks = [fcell.value, vcell.value]
+                    if any(h is not None and needle in str(h).lower() for h in haystacks):
+                        is_formula = isinstance(fcell.value, str) and fcell.value.startswith("=")
+                        matches.append(
+                            {
+                                "sheet": name,
+                                "ref": f"{get_column_letter(letter)}{number}",
+                                "value": _jsonable(vcell.value),
+                                "formula": fcell.value if is_formula else None,
+                            }
+                        )
+    finally:
+        formulas.close()
+        values.close()
 
-    return {"path": target, "pattern": pattern, "matches": matches,
-            "count": len(matches), "truncated": False}
+    return {
+        "path": target,
+        "pattern": pattern,
+        "matches": matches,
+        "count": len(matches),
+        "truncated": exhausted or len(matches) >= max_results,
+        # Two different reasons to stop, and they call for different next moves.
+        "note": (
+            f"stopped after scanning {scanned} cells without reaching the end of the "
+            "workbook — search one sheet at a time, or narrow the range with read_range."
+            if exhausted
+            else None
+        ),
+    }
 
 
 @mcp.tool()

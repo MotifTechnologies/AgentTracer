@@ -5,7 +5,6 @@ import pytest
 
 from agent_tracer.config.schema import ConfigError
 from agent_tracer.datasets.swebench_local import SWEBenchLocalDataset
-from agent_tracer.eval.patch_similarity import compare_patches, touched_files
 
 GOLD = """diff --git a/src/mod.py b/src/mod.py
 index 111..222 100644
@@ -17,35 +16,6 @@ index 111..222 100644
 +def f(x):
 +    return x + 2
 """
-
-DIFFERENT = """diff --git a/src/other.py b/src/other.py
-index 111..222 100644
---- a/src/other.py
-+++ b/src/other.py
-@@ -1,2 +1,2 @@
--y = 1
-+y = 2
-"""
-
-
-class TestPatchSimilarity:
-    def test_touched_files(self):
-        assert touched_files(GOLD) == {"src/mod.py"}
-
-    def test_identical_patch_scores_one(self):
-        sim = compare_patches(GOLD, GOLD)
-        assert sim.files_match == 1.0
-        assert sim.added_sim == 1.0
-        assert sim.score == 1.0
-
-    def test_different_file_gates_score_to_zero(self):
-        sim = compare_patches(DIFFERENT, GOLD)
-        assert sim.files_match == 0.0
-        assert sim.score == 0.0
-
-    def test_empty_submission(self):
-        sim = compare_patches("", GOLD)
-        assert sim.score == 0.0
 
 
 class TestSWEBenchLocalDataset:
@@ -74,17 +44,26 @@ class TestSWEBenchLocalDataset:
         with pytest.raises(ConfigError, match="missing keys"):
             SWEBenchLocalDataset(path).load()
 
-    def test_evaluate_tiers(self, tmp_path):
+    def test_evaluate_never_claims_a_verdict(self, tmp_path):
+        """Correctness needs a task-specific verifier — out of scope here."""
         dataset = SWEBenchLocalDataset(self._write(tmp_path))
         task = dataset.load()[0]
-        assert dataset.evaluate(task, GOLD).correct is True
-        assert dataset.evaluate(task, DIFFERENT).correct is False
-        assert dataset.evaluate(task, None).correct is None
-        result = dataset.evaluate(task, GOLD)
-        assert result.details["tier"] == 1
+        for submission in (GOLD, "unrelated diff", None):
+            result = dataset.evaluate(task, submission)
+            assert result.correct is None
+            assert result.score is None
 
-    def test_real_seed_sample_loads(self):
-        seeds = Path("data/seeds/swebench_local_sample.jsonl")
-        tasks = SWEBenchLocalDataset(seeds).load()
-        assert len(tasks) == 5
-        assert all(t.reference for t in tasks)
+    def test_limit(self, tmp_path):
+        path = tmp_path / "many.jsonl"
+        rows = [
+            {
+                "repo": "org/repo",
+                "instance_id": f"org__repo-{i}",
+                "base_commit": "abc123",
+                "problem_statement": "fix it",
+                "patch": GOLD,
+            }
+            for i in range(5)
+        ]
+        path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+        assert len(SWEBenchLocalDataset(path).load(limit=2)) == 2

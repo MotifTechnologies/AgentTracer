@@ -7,8 +7,11 @@ inside its own agent session so concurrent tasks stay fully isolated
 
 from __future__ import annotations
 
-from contextlib import AsyncExitStack
-from typing import Annotated, Any
+import shutil
+import tempfile
+from contextlib import AsyncExitStack, contextmanager
+from pathlib import Path
+from typing import Annotated, Any, Iterator
 
 from pydantic import BaseModel, Field
 from stirrup import Agent, Tool, ToolResult, ToolUseCountMetadata
@@ -44,6 +47,33 @@ SUBMIT_TOOL: Tool[SubmitParams, ToolUseCountMetadata] = Tool(
     parameters=SubmitParams,
     executor=_submit_executor,
 )
+
+
+@contextmanager
+def _materialized_attachments(task: Task) -> Iterator[Path | None]:
+    """Write ``attachments.files`` to a temp dir for upload into the exec env.
+
+    Seeds carry their whole workspace inline (``{relative/path: content}``) so a
+    task is reproducible from one JSONL line. stirrup uploads a directory
+    preserving relative paths, so the agent sees the layout the task describes.
+    """
+    files = (task.attachments or {}).get("files") if task.attachments else None
+    if not files:
+        yield None
+        return
+
+    root = Path(tempfile.mkdtemp(prefix="agent_tracer_attach_"))
+    try:
+        for rel_path, content in files.items():
+            target = root / rel_path
+            # Reject path escapes: seed content is data, not a trusted writer.
+            if not target.resolve().is_relative_to(root.resolve()):
+                raise ValueError(f"attachment path escapes workspace: {rel_path!r}")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+        yield root
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 def _describe_sandbox(config: RunConfig, provider: Any) -> dict[str, str]:
@@ -161,7 +191,18 @@ class SingleAgentOrchestrator:
             logger=recorder,
         )
 
-        async with agent.session() as session:
+        with _materialized_attachments(task) as workspace:
+            return await self._run_session(agent, task, trajectory, agent_id, workspace)
+
+    async def _run_session(
+        self,
+        agent: Agent,
+        task: Task,
+        trajectory: Trajectory,
+        agent_id: str,
+        workspace: Path | None,
+    ) -> dict[str, Any]:
+        async with agent.session(input_files=str(workspace) if workspace else None) as session:
             # Record the resolved tool specs (post provider/MCP resolution) and the
             # system prompt so exporters can reconstruct training-format records.
             # The prompt must be the ASSEMBLED one (stirrup base + custom): training

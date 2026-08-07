@@ -5,12 +5,14 @@ instances are crawled from public GitHub repos (issue text + gold patch) in a
 SWE-bench-shaped JSONL. Ported from v1 agenttracer's ``swebench_local``.
 
 Expected keys per line: ``repo``, ``instance_id``, ``base_commit``,
-``problem_statement``, ``patch`` (gold, grading only), optional
-``test_patch`` / ``hints_text`` / ``created_at``.
+``problem_statement``, ``patch`` (gold reference, recorded not graded),
+optional ``test_patch`` / ``hints_text`` / ``created_at``.
 
-Grading here is tier-1 patch similarity (see ``agent_tracer.eval``); the
-returned details carry the raw signals so offline tier-2/3 passes can
-re-grade without re-running the agent.
+Correctness grading is deliberately absent: task-specific verifiers (test
+execution, state assertions, answer matching) belong to benchmark harnesses,
+not to this framework, whose job is to run agents and record trajectories.
+The gold patch is carried through as ``reference`` so downstream tooling can
+grade offline without re-running the agent.
 """
 
 from __future__ import annotations
@@ -20,7 +22,6 @@ from pathlib import Path
 
 from agent_tracer.config.schema import ConfigError
 from agent_tracer.core.task import EvalResult, Task
-from agent_tracer.eval.patch_similarity import compare_patches
 
 _REQUIRED = ("repo", "instance_id", "base_commit", "problem_statement", "patch")
 
@@ -30,12 +31,6 @@ _TASK_INSTRUCTIONS = (
     "(the full `git diff` output) via the submit tool.\n\n"
     "## Issue\n{problem_statement}"
 )
-
-# Tier-1 triage threshold from v1 field measurements: identical or
-# near-identical patches score >= 0.9; genuinely different approaches < 0.2.
-# Between the two, correctness is unknown at tier 1 (escalate offline).
-CORRECT_THRESHOLD = 0.9
-INCORRECT_THRESHOLD = 0.2
 
 
 class SWEBenchLocalDataset:
@@ -81,23 +76,10 @@ class SWEBenchLocalDataset:
         return tasks
 
     def evaluate(self, task: Task, submission: str | None) -> EvalResult:
-        if submission is None:
-            return EvalResult(correct=None)
-        similarity = compare_patches(submission, task.reference or "")
-        score = similarity.score
-        if score >= CORRECT_THRESHOLD:
-            correct: bool | None = True
-        elif score < INCORRECT_THRESHOLD:
-            correct = False
-        else:
-            correct = None  # tier-1 cannot decide; escalate to tier 2/3 offline
-        return EvalResult(
-            correct=correct,
-            score=round(score, 4),
-            details={
-                "tier": 1,
-                "files_match": round(similarity.files_match, 4),
-                "added_sim": round(similarity.added_sim, 4),
-                "removed_sim": round(similarity.removed_sim, 4),
-            },
-        )
+        """No correctness verdict: patch equivalence needs a test harness.
+
+        Returns ``correct=None`` so records stay honest about being ungraded;
+        dataset-level quality gating (well-formedness, completeness) happens on
+        the exported records instead.
+        """
+        return EvalResult(correct=None, details={"graded": False})

@@ -21,3 +21,7 @@ build/
 # Run outputs
 results/
 *.traj.json
+
+# Generated seed corpora (regenerate via DATA_BUILDER/); manifests stay tracked
+data/seeds/*.jsonl
+!data/seeds/*sample*.jsonl

@@ -1,0 +1,79 @@
+{
+  "source_dataset": "nebius/SWE-rebench",
+  "source_split": "filtered",
+  "source_rows": 6542,
+  "seeds": 600,
+  "repos": 329,
+  "filters": {
+    "per_repo_cap": 5,
+    "min_year": null,
+    "held_out_eval_repos": [
+      "astropy/astropy",
+      "django/django",
+      "matplotlib/matplotlib",
+      "mwaskom/seaborn",
+      "pallets/flask",
+      "psf/requests",
+      "pydata/xarray",
+      "pylint-dev/pylint",
+      "pytest-dev/pytest",
+      "scikit-learn/scikit-learn",
+      "sphinx-doc/sphinx",
+      "sympy/sympy"
+    ]
+  },
+  "dropped": {
+    "eval_repo_overlap": 25,
+    "license_unknown": 13,
+    "per_repo_cap": 182,
+    "license_unrecognized": 1,
+    "license_denied:mozilla public": 2
+  },
+  "licenses": {
+    "MIT License": 282,
+    "Apache License 2.0": 134,
+    "BSD License": 7,
+    "BSD 3-Clause \"New\" or \"Revised\" License": 122,
+    "BSD 2-Clause \"Simplified\" License": 16,
+    "BSD-3-Clause": 10,
+    "The Unlicense": 4,
+    "BSD 3-Clause": 5,
+    "Apache License 2.0 and MIT License": 2,
+    "BSD-2-Clause-Patent": 1,
+    "New BSD License": 5,
+    "BSD 3-Clause License": 1,
+    "3-Clause BSD license": 1,
+    "BSD-3": 1,
+    "BSD": 3,
+    "PostgreSQL License": 1,
+    "Apache License 2.0 or MIT License": 3,
+    "MIT No Attribution": 1,
+    "ISC License": 1
+  },
+  "top_repos": {
+    "lincc-frameworks/nested-pandas": 5,
+    "deepset-ai/haystack": 5,
+    "facelessuser/pymdown-extensions": 5,
+    "tobymao/sqlglot": 5,
+    "scipp/plopp": 5,
+    "zarr-developers/zarr-python": 5,
+    "omni-us/jsonargparse": 5,
+    "beeware/briefcase": 5,
+    "google/flax": 5,
+    "wemake-services/wemake-python-styleguide": 5,
+    "qBraid/pyqasm": 5,
+    "reframe-hpc/reframe": 5,
+    "getsentry/sentry-python": 5,
+    "streamlink/streamlink": 5,
+    "agronholm/sqlacodegen": 5,
+    "pandas-dev/pandas": 5,
+    "astropy/astroquery": 5,
+    "networkx/networkx": 5,
+    "NeurodataWithoutBorders/pynwb": 5,
+    "fitbenchmarking/fitbenchmarking": 5
+  },
+  "created_at_range": [
+    "2024-09-06 18:25:45",
+    "2025-04-30 20:14:11"
+  ]
+}

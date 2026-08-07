@@ -96,6 +96,23 @@ async def main() -> None:
         assert [r[0] for r in out["rows"]] == ["지우개"], out
         print("query placeholders -> ok, an int stays an int")
 
+        # `SELECT *` across a join is the query a model writes most often, and
+        # it is the one that repeats a column name. Looking a row up by name
+        # gives the first `id` twice, so the invoice's 77 would read as 1.
+        await session.call_tool("execute", {"database": db,
+            "sql": "CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT)"})
+        await session.call_tool("execute", {"database": db,
+            "sql": "INSERT INTO customers VALUES (1, 'Acme')"})
+        await session.call_tool("execute", {"database": db,
+            "sql": "CREATE TABLE invoices (id INTEGER PRIMARY KEY, customer_id INTEGER, amount REAL)"})
+        await session.call_tool("execute", {"database": db,
+            "sql": "INSERT INTO invoices VALUES (77, 1, 12.5)"})
+        out = _payload(await session.call_tool("query", {"database": db,
+            "sql": "SELECT * FROM customers c JOIN invoices i ON i.customer_id = c.id"}))
+        assert out["columns"] == ["id", "name", "id", "customer_id", "amount"], out
+        assert out["rows"] == [[1, "Acme", 77, 1, 12.5]], out
+        print("query SELECT * across a join -> ok, the duplicated id is 77 and not 1")
+
         # SQLite's own message has to reach the model — it is what the next
         # attempt is built from.
         bad = await session.call_tool("query", {"database": db, "sql": "SELECT * FROM nope"})

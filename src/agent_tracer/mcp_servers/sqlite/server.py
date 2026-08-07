@@ -61,7 +61,10 @@ try:
         rows = rows[: req["max_rows"]]
         out = {
             "columns": [d[0] for d in cur.description] if cur.description else [],
-            "rows": [[r[k] for k in r.keys()] for r in rows],
+            # list(row), not a lookup per key: a join repeats column names and
+            # Row resolves a name to the first column holding it, so every
+            # duplicate would report the first one's value.
+            "rows": [list(r) for r in rows],
             "truncated": truncated,
         }
     else:

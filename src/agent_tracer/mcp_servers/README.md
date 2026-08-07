@@ -30,7 +30,7 @@ src/agent_tracer/mcp_servers/
 ├── xlsx/              # 워크북 읽기·셀 편집           [샌드박스]
 └── context7/          # 라이브러리 문서 조회          [외부 HTTP]
 
-각 폴더는 mcp.json · server.py · smoke_test.py 로 동일하다.
+각 폴더는 mcp.json · server.py 로 동일하다.
 단 `[외부 HTTP]`는 server.py가 없다 — 우리가 띄우는 게 아니다.
 ```
 
@@ -39,14 +39,11 @@ src/agent_tracer/mcp_servers/
 
 `[외부 HTTP]`는 `transport: http`로 남의 엔드포인트를 가리킨다. spawn하는 프로세스가
 없으니 샌드박스 환경변수도 무관하고, 대신 **네트워크와 그쪽 가용성에 의존**한다.
-스모크 테스트가 실패하면 먼저 그쪽을 의심해야 하므로 실패 메시지가 그렇게 말한다.
+호출이 실패하면 먼저 그쪽을 의심할 것.
 
-각 서버의 계약은 스모크 테스트가 실제 서버를 띄워(또는 접속해) 검증한다. 러너 없이
-단독 실행된다:
-
-```bash
-cd src/agent_tracer/mcp_servers/<서버> && uv run smoke_test.py
-```
+매니페스트가 선언한 툴과 `server.py`가 구현한 툴이 같은지는 `tests/test_mcp_manifests.py`가
+검증한다. 서버를 띄우지 않고 소스를 읽어 비교하므로, 툴을 추가·개명하고 mcp.json을
+빠뜨리면(또는 그 반대) 일반 `pytest`에서 바로 잡힌다.
 
 > 범용 search·fetch는 MCP가 아니라 stirrup 내장 web 툴(web_fetch/web_search)을 쓴다
 > (config `tools.web: true`, web_search는 `BRAVE_API_KEY` 필요). 같은 걸 MCP로
@@ -216,9 +213,6 @@ PEP 723 헤더에는 그 서버가 실제로 쓰는 의존성만 적으면 된�
 ```bash
 # 단독 실행 (러너가 하는 것과 동일한 방식)
 cd src/agent_tracer/mcp_servers/echo && uv run server.py
-
-# 툴 호출 스모크 테스트
-cd src/agent_tracer/mcp_servers/echo && uv run smoke_test.py
 ```
 
 서버 구현은 공식 MCP Python SDK(FastMCP)를 사용하고, 의존성은 PEP 723 인라인

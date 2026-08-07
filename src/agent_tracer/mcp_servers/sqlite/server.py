@@ -47,20 +47,35 @@ _SANDBOX = None
 # so nothing about the caller's SQL has to survive a shell quoting round trip —
 # it travels base64-encoded inside the request.
 _RUNNER = r"""
-import base64, json, sqlite3, sys
+import base64, json, os, sqlite3, sys
+from pathlib import Path
 
 req = json.loads(base64.b64decode(sys.argv[1]))
+mode = req["mode"]
 try:
-    con = sqlite3.connect(req["database"], timeout=10)
+    database = os.path.abspath(req["database"])
+    if mode == "query":
+        # Opened read-only, and never created. A read that can write commits
+        # nothing and loses it; a read that creates answers "no tables" for a
+        # database that was only ever a typo.
+        if not os.path.exists(database):
+            raise FileNotFoundError("no such database")
+        con = sqlite3.connect(Path(database).as_uri() + "?mode=ro", uri=True, timeout=10)
+    else:
+        con = sqlite3.connect(database, timeout=10)
     con.row_factory = sqlite3.Row
     cur = con.cursor()
     cur.execute(req["sql"], req.get("params") or [])
-    if req["mode"] == "query":
+    # `description` is the only reliable answer to "did this return rows", and
+    # each tool has to be given the kind of statement it commits for.
+    if mode == "query":
+        if cur.description is None:
+            raise ValueError("this statement returns no rows - use execute to write")
         rows = cur.fetchmany(req["max_rows"] + 1)
         truncated = len(rows) > req["max_rows"]
         rows = rows[: req["max_rows"]]
         out = {
-            "columns": [d[0] for d in cur.description] if cur.description else [],
+            "columns": [d[0] for d in cur.description],
             # list(row), not a lookup per key: a join repeats column names and
             # Row resolves a name to the first column holding it, so every
             # duplicate would report the first one's value.
@@ -68,12 +83,21 @@ try:
             "truncated": truncated,
         }
     else:
+        if cur.description is not None:
+            raise ValueError(
+                "this statement returns rows - use query to read. A write with RETURNING "
+                "is not supported here; run it without the RETURNING clause"
+            )
         con.commit()
         out = {"rows_affected": cur.rowcount, "last_row_id": cur.lastrowid}
     con.close()
     print(json.dumps({"ok": True, "result": out}, default=str))
 except Exception as exc:
-    print(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}))
+    message = f"{type(exc).__name__}: {exc}"
+    if mode == "query" and isinstance(exc, sqlite3.OperationalError) and "readonly" in str(exc):
+        # What the read-only connection refused, said in terms of the tools.
+        message = "this statement writes - query only reads, use execute"
+    print(json.dumps({"ok": False, "error": message}))
 """
 
 
@@ -127,10 +151,13 @@ def query(
 ) -> dict:
     """Run a read query and return the rows.
 
+    The database is opened read-only and is not created: a statement that
+    writes, or a name that does not exist, is refused rather than answered.
+
     Args:
-        database: Path to the .db file, absolute or relative to the working
-            directory. Created empty if it does not exist.
-        sql: A single SELECT (or PRAGMA) statement.
+        database: Path to an existing .db file, absolute or relative to the
+            working directory.
+        sql: A single SELECT (or PRAGMA) statement that returns rows.
         params: Values for `?` placeholders, in order. Use these rather than
             formatting values into the SQL.
         max_rows: Stop after this many rows; the reply says if it truncated.
@@ -162,8 +189,8 @@ def list_tables(database: str) -> dict:
     """List the tables and views in a database.
 
     Args:
-        database: Path to the .db file, absolute or relative to the working
-            directory.
+        database: Path to an existing .db file, absolute or relative to the
+            working directory.
     """
     result = _call(
         database,
@@ -181,8 +208,8 @@ def describe_table(database: str, table: str) -> dict:
     """Show a table's columns, their types and which are the primary key.
 
     Args:
-        database: Path to the .db file, absolute or relative to the working
-            directory.
+        database: Path to an existing .db file, absolute or relative to the
+            working directory.
         table: Table name.
     """
     # `table` cannot be a `?` placeholder — PRAGMA takes an identifier, not a

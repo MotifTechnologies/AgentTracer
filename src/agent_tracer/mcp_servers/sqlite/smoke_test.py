@@ -127,6 +127,30 @@ async def main() -> None:
         assert bad.is_error and "No such table" in bad.content[0].text, bad.content[0].text
         print("describe_table on unknown table -> refused")
 
+        # `query` reads. An INSERT through it reported zero rows and looked
+        # like it had worked, and the connection was closed without committing.
+        bad = await session.call_tool("query", {
+            "database": db, "sql": "INSERT INTO orders (item, qty, price) VALUES ('X', 1, 1.0)"})
+        assert bad.is_error, bad.content[0].text
+        out = _payload(await session.call_tool("query", {
+            "database": db, "sql": "SELECT COUNT(*) FROM orders"}))
+        assert out["rows"] == [[3]], out
+        print("query given a write -> refused, and the write did not happen")
+
+        # `execute` writes. A SELECT through it threw the rows away and
+        # answered with a rowcount instead.
+        bad = await session.call_tool("execute", {"database": db, "sql": "SELECT * FROM orders"})
+        assert bad.is_error, bad.content[0].text
+        print("execute given a read -> refused")
+
+        # A mistyped name created an empty database, and `list_tables` then
+        # answered "no tables" — a database that is not there reading as one
+        # that is empty.
+        bad = await session.call_tool("list_tables", {"database": "typo.db"})
+        assert bad.is_error, bad.content[0].text
+        assert not (workdir / "typo.db").exists(), "a read created the database"
+        print("list_tables on a mistyped name -> refused, and created nothing")
+
     print("smoke test OK")
 
 

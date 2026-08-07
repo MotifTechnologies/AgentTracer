@@ -186,8 +186,8 @@ class DatasetConfig(StrictModel):
 
     @model_validator(mode="after")
     def _custom_needs_path(self) -> DatasetConfig:
-        if self.name == "custom" and self.path is None:
-            raise ConfigError("dataset: custom dataset requires 'path' (JSONL file)")
+        if self.name in ("custom", "swebench_local") and self.path is None:
+            raise ConfigError(f"dataset: {self.name} dataset requires 'path' (JSONL file)")
         return self
 
 

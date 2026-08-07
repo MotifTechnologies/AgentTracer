@@ -54,4 +54,8 @@ class CustomDataset:
 def get_dataset(name: str, path: Path | None):
     if name == "custom":
         return CustomDataset(path)  # path validated in config schema
-    raise ConfigError(f"dataset: unknown dataset {name!r} (v0 supports: custom)")
+    if name == "swebench_local":
+        from agent_tracer.datasets.swebench_local import SWEBenchLocalDataset
+
+        return SWEBenchLocalDataset(path)
+    raise ConfigError(f"dataset: unknown dataset {name!r} (supported: custom, swebench_local)")

@@ -12,11 +12,29 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from agent_tracer.config.schema import ConfigError
+
 if TYPE_CHECKING:
     from agent_tracer.config.schema import EnvironmentConfig
 
 
+#: Caps the E2B SDK has no equivalent for. Ignoring them would mean a config
+#: moved over from docker keeps its security caps in the YAML and loses them in
+#: the sandbox, with nothing said either way.
+UNSUPPORTED = ("mem_limit", "pids_limit")
+
+
 def build(config: EnvironmentConfig, *, task_id: str | None = None) -> Any:
+    # Before the SDK import, so this is the answer whether or not the extra is
+    # installed. Only a cap the config actually names is refused — both default
+    # to docker's values for every environment.
+    for field in UNSUPPORTED:
+        if field in config.model_fields_set:
+            raise ConfigError(
+                f"environment: e2b has no {field} — the sandbox is hosted and its "
+                "resources are the template's. Remove it, or use the docker backend."
+            )
+
     from stirrup.tools.code_backends.e2b import E2BCodeExecToolProvider
 
     metadata = dict(config.labels)

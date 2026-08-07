@@ -9,6 +9,7 @@ file" rather than failing where the mistake is.
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 import sys
 import textwrap
@@ -69,6 +70,40 @@ class TestRegistry:
         assert "no-such-backend" in message
         for name in BUILTIN:
             assert name in message, f"{name} not offered as an alternative"
+
+
+class TestBuild:
+    """What a backend does with a setting it cannot honour.
+
+    Ignoring one is the worst of the three answers: `local` dropped
+    `allowed_commands` and stirrup reads `None` as "every command allowed", so
+    an explicit restriction became no restriction. `e2b` dropped `mem_limit`
+    and `pids_limit`, so moving a config from docker to e2b lost both security
+    caps and said nothing.
+    """
+
+    def test_local_passes_on_the_allowlist(self):
+        provider = _load("local").build(_cfg(type="local", allowed_commands=["^python"]), task_id=None)
+
+        assert provider._allowed_commands == ["^python"]
+
+    def test_local_with_no_allowlist_stays_unrestricted(self):
+        provider = _load("local").build(_cfg(type="local"), task_id=None)
+
+        assert provider._allowed_commands is None
+
+    def test_e2b_refuses_the_caps_it_cannot_apply(self):
+        """Refused before the SDK is imported, so this is the answer whether or
+        not the e2b extra is installed."""
+        for cap in ({"mem_limit": "1g"}, {"pids_limit": 64}):
+            with pytest.raises(ConfigError, match=next(iter(cap))):
+                _load("e2b").build(_cfg(type="e2b", **cap), task_id=None)
+
+    def test_e2b_is_not_refused_over_a_default_it_was_never_given(self):
+        """The caps default to docker's values for every environment, so only a
+        config that names one is refused."""
+        with contextlib.suppress(ImportError):  # the e2b extra is optional
+            _load("e2b").build(_cfg(type="e2b"), task_id=None)
 
 
 class TestDescribe:

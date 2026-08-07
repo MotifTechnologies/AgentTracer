@@ -17,7 +17,13 @@ if TYPE_CHECKING:
 def build(config: EnvironmentConfig, *, task_id: str | None = None) -> Any:
     from stirrup.tools.code_backends import LocalCodeExecToolProvider
 
-    return LocalCodeExecToolProvider(shell_timeout=config.shell_timeout)
+    return LocalCodeExecToolProvider(
+        shell_timeout=config.shell_timeout,
+        # `None` is stirrup's "every command allowed", so dropping an explicit
+        # allowlist is not a laxer default — it is no allowlist at all, on the
+        # one backend where the commands run on this machine.
+        allowed_commands=config.allowed_commands or None,
+    )
 
 
 def describe(config: EnvironmentConfig, provider: Any) -> dict[str, str | None]:

@@ -109,11 +109,17 @@ mcp:
 | `AGENT_TRACER_WORKDIR` | 샌드박스 안 에이전트 작업 디렉토리 |
 | `AGENT_TRACER_HOST_DIR` | 샌드박스가 마운트한 호스트 경로 (마운트하는 백엔드만) |
 | `AGENT_TRACER_USER` | 샌드박스 안 사용자 (있는 백엔드만) |
-| `AGENT_TRACER_OPTIONS` | JSON — 백엔드별 추가 값, `attach()`에 그대로 전달 |
+| `AGENT_TRACER_OPTIONS` | JSON — 백엔드별 추가 값, `attach()`에 그대로 전달. **`sandbox_options: true`를 선언한 매니페스트에만** |
 
-매니페스트별 opt-in이 아니라 **전부에 항상 세팅**되므로 새 서버는 존재를 전제해도
-된다. 빈 값은 `""`가 아니라 아예 빠지니 **존재 여부**로 판단하면 된다. 매니페스트
-`env`가 마지막에 병합되므로 필요하면 덮어쓸 수 있다.
+`OPTIONS`를 뺀 나머지는 매니페스트별 opt-in이 아니라 **전부에 항상 세팅**되므로 새
+서버는 존재를 전제해도 된다. 빈 값은 `""`가 아니라 아예 빠지니 **존재 여부**로
+판단하면 된다. 매니페스트 `env`가 마지막에 병합되므로 필요하면 덮어쓸 수 있다.
+
+`OPTIONS`만 예외인 이유는 거기가 백엔드 크리덴셜이 들어가는 자리이기 때문이다 —
+`e2b.attach()`는 여기서 API 키를 꺼낸다. 계산만 하는 서버나 나중에 추가된 서드파티
+서버에 키가 갈 이유가 없으므로 샌드박스에 붙는 서버가 매니페스트에 직접 선언한다.
+`environment.options` 값은 `env:VAR_NAME` 참조를 지원하며 기동 시 해석된다 —
+해석 실패는 실행 거부다.
 
 읽는 쪽은 `environments.from_env()` 한 줄이면 된다 — 위 변수들을 해석해서
 `(access, workdir)`을 돌려준다. **백엔드로 분기하지 말 것.** 그래야 플러그인으로
@@ -150,6 +156,7 @@ PEP 723 헤더에는 그 서버가 실제로 쓰는 의존성만 적으면 된�
 | `url` | http 시 | streamable-HTTP 엔드포인트 (서버 수명주기는 외부 관리) |
 | `env` | | spawn 환경변수(stdio). 시크릿은 반드시 `"env:VAR_NAME"` 참조로 — 원문 저장 금지, 미해석 시 실행 거부 |
 | `headers` | | 매 요청에 붙는 HTTP 헤더(http 전용). `env` 와 같은 규율 — API 키를 매니페스트에 적으면 repo에 키를 공개하는 것. stdio에 쓰면 거부 |
+| `sandbox_options` | | 이 서버가 샌드박스에 붙는다는 선언(stdio 전용). 선언한 서버만 `AGENT_TRACER_OPTIONS`(= 백엔드 크리덴셜)를 받는다 |
 | `startup_timeout_s` | | initialize 핸드셰이크 대기 상한 (기본 15초) |
 | `call_timeout_s` | | 툴 호출 기본 타임아웃 (기본 60초) |
 | `tools` | | 선언적 툴 목록 (문서·계약 테스트용 — 런타임 진실은 MCP discovery) |

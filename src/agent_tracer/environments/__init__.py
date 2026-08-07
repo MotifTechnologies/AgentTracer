@@ -108,8 +108,11 @@ def attach(env_type: str, sandbox_id: str, options: dict[str, str] | None = None
         env_type: The `environment.type` the sandbox was created under.
         sandbox_id: The `sandbox_id` that `describe` reported for it.
         options: Backend-specific extras — the in-sandbox user, an API key, a
-            host alias. Passed through untouched; a backend that needs none
-            ignores it.
+            host alias. `environment.options` with its `env:` references
+            already resolved (see `EnvironmentConfig.resolved_options`), so
+            what arrives here is the credential itself. A backend that needs
+            none ignores it; the runner sends it only to the servers that
+            declare `sandbox_options` in their manifest.
     """
     return _load(env_type).attach(sandbox_id, options or {})
 

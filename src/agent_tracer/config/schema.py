@@ -113,8 +113,29 @@ class EnvironmentConfig(StrictModel):
     ttl: float | None = None  # seconds; E2B kills its own, others may label it
     labels: dict[str, str] = Field(default_factory=dict)
 
-    # Anything a specific backend needs and no other does. Untouched here.
-    options: dict[str, str] = Field(default_factory=dict)
+    # Anything a specific backend needs and no other does. What `attach()`
+    # takes, so this is where a backend's credentials go — see resolved_options.
+    options: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Backend-specific extras passed to attach(), e.g. e2b's api_key. "
+            "Values take an 'env:VAR_NAME' reference (recommended) or a literal."
+        ),
+    )
+
+    def resolved_options(self) -> dict[str, str]:
+        """`options` with its `env:` references resolved.
+
+        `e2b.attach` reads its API key out of here, so these get the same
+        discipline as `model.api_key` rather than being handed on untouched —
+        `api_key: env:E2B_API_KEY` passed the literal string to
+        `Sandbox.connect`, which left a plaintext key in the YAML as the only
+        thing that worked.
+        """
+        return {
+            key: resolve_env_ref(value, field=f"environment.options.{key}")
+            for key, value in self.options.items()
+        }
 
     @model_validator(mode="after")
     def _image_is_required(self) -> EnvironmentConfig:
@@ -198,3 +219,4 @@ class RunConfig(StrictModel):
         from agent_tracer.environments import ensure_installed
 
         ensure_installed(self.environment.type)
+        self.environment.resolved_options()

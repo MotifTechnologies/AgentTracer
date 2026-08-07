@@ -8,6 +8,7 @@
   "command": "uv",
   "args": ["run", "--quiet", "server.py"],
   "env": {},
+  "sandbox_options": true,
   "startup_timeout_s": 15,
   "call_timeout_s": 90,
   "tools": [

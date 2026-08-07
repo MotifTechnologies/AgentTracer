@@ -73,6 +73,11 @@
       "default": {},
       "description": "HTTP headers sent with every request (http only). Values support env: references (e.g. \"env:CONTEXT7_API_KEY\") — never store a key literally."
     },
+    "sandbox_options": {
+      "type": "boolean",
+      "default": false,
+      "description": "This server attaches to the task's sandbox and needs environment.options to do it (stdio only). Those options are where a backend's credentials go — e2b.attach() takes its API key from them — so AGENT_TRACER_OPTIONS is sent only to servers that declare this. The rest of the sandbox description (AGENT_TRACER_ENV_TYPE, _SANDBOX_ID, _WORKDIR, _HOST_DIR, _USER) goes to every server."
+    },
     "startup_timeout_s": {
       "type": "number",
       "exclusiveMinimum": 0,

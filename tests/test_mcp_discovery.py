@@ -9,7 +9,11 @@ import pytest
 
 import agent_tracer
 from agent_tracer.config.schema import ConfigError, MCPDiscoveryConfig
-from agent_tracer.mcp.discovery import build_stirrup_mcp_config, discover_mcp_servers
+from agent_tracer.mcp.discovery import (
+    build_stirrup_mcp_config,
+    discover_mcp_servers,
+    sandbox_env,
+)
 
 
 def _server(root: Path, name: str, **overrides) -> Path:
@@ -207,6 +211,58 @@ class TestStirrupMapping:
         ).mcp_servers["alpha"].env
 
         assert env["AGENT_TRACER_ENV_TYPE"] == "local"
+
+
+class TestSandboxOptions:
+    """`environment.options` is where a backend's credentials go — `e2b.attach`
+    takes its API key from it — so it reaches the servers that attach to the
+    sandbox and no others. It was serialised into `AGENT_TRACER_OPTIONS` for
+    every stdio server, including ones that never touch the sandbox and any
+    third-party server dropped into the discovery directory later.
+    """
+
+    def _sandbox(self) -> dict[str, str]:
+        return sandbox_env(env_type="e2b", sandbox_id="sbx_1", options={"api_key": "secret"})
+
+    def test_a_server_that_does_not_attach_is_not_given_the_key(self, tmp_path):
+        _server(tmp_path, "calculator")
+        manifests = discover_mcp_servers(_cfg(tmp_path))
+
+        env = build_stirrup_mcp_config(
+            manifests, tmp_path, self._sandbox()
+        ).mcp_servers["calculator"].env
+
+        assert "AGENT_TRACER_OPTIONS" not in env, env
+
+    def test_the_rest_of_the_description_still_reaches_it(self, tmp_path):
+        """Only the options are held back — a server can still rely on the
+        others being there."""
+        _server(tmp_path, "calculator")
+        manifests = discover_mcp_servers(_cfg(tmp_path))
+
+        env = build_stirrup_mcp_config(
+            manifests, tmp_path, self._sandbox()
+        ).mcp_servers["calculator"].env
+
+        assert env["AGENT_TRACER_ENV_TYPE"] == "e2b"
+        assert env["AGENT_TRACER_SANDBOX_ID"] == "sbx_1"
+
+    def test_a_server_that_attaches_says_so_and_gets_them(self, tmp_path):
+        _server(tmp_path, "filesystem", sandbox_options=True)
+        manifests = discover_mcp_servers(_cfg(tmp_path))
+
+        env = build_stirrup_mcp_config(
+            manifests, tmp_path, self._sandbox()
+        ).mcp_servers["filesystem"].env
+
+        assert json.loads(env["AGENT_TRACER_OPTIONS"]) == {"api_key": "secret"}
+
+    def test_the_packaged_servers_that_attach_declare_it(self):
+        """`from_env()` without options attaches to E2B with no API key."""
+        manifests = discover_mcp_servers(MCPDiscoveryConfig())
+
+        attaching = {n for n, m in manifests.items() if m.sandbox_options}
+        assert attaching == {"filesystem", "sqlite", "soffice"}, attaching
 
 
 class TestHttpServers:

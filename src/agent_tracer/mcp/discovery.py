@@ -48,6 +48,11 @@ class MCPManifest(BaseModel):
     #: `env`, because this is where a hosted server's API key goes and a key
     #: committed to a manifest is a key published with the repository.
     headers: dict[str, str] = {}
+    #: This server attaches to the task's sandbox and so needs whatever
+    #: `environment.options` holds for that — which is where a backend's
+    #: credentials live. Opt-in, so a key does not go to a server that only
+    #: computes, or to a third-party one dropped into the directory later.
+    sandbox_options: bool = False
     startup_timeout_s: float = 15
     call_timeout_s: float = 60
     tools: list[ManifestTool] = []
@@ -145,6 +150,10 @@ def _select(
 #:
 #: Set on every server rather than opted into per manifest, so a new one can
 #: rely on them being present. A server that only computes ignores them.
+#:
+#: With one exception: OPTIONS carries `environment.options`, which is where a
+#: backend's credentials go, and only a manifest declaring `sandbox_options`
+#: receives it.
 SANDBOX_ENV_PREFIX = "AGENT_TRACER_"
 
 SANDBOX_ENV_VARS = (
@@ -155,6 +164,9 @@ SANDBOX_ENV_VARS = (
     "AGENT_TRACER_USER",  # in-sandbox user, where the backend has one
     "AGENT_TRACER_OPTIONS",  # JSON: backend extras, passed to attach() untouched
 )
+
+#: The one that is not everyone's.
+SANDBOX_OPTIONS_VAR = "AGENT_TRACER_OPTIONS"
 
 
 @cache
@@ -213,6 +225,15 @@ def sandbox_env(
     return {k: v for k, v in values.items() if v}
 
 
+def _sandbox_for(manifest: MCPManifest, sandbox: dict[str, str] | None) -> dict[str, str]:
+    """This task's sandbox, as much of it as this server has asked for."""
+    if not sandbox:
+        return {}
+    if manifest.sandbox_options:
+        return sandbox
+    return {k: v for k, v in sandbox.items() if k != SANDBOX_OPTIONS_VAR}
+
+
 def build_stirrup_mcp_config(
     manifests: dict[str, MCPManifest],
     root: Path,
@@ -220,9 +241,12 @@ def build_stirrup_mcp_config(
 ):
     """Map selected manifests onto stirrup's MCPConfig for its native client.
 
-    `sandbox` is merged into every stdio server's environment. A manifest can
-    override any of it; none of it is secret, and a server that should be
-    pinned to one sandbox ought to be able to say so.
+    `sandbox` is merged into every stdio server's environment — a type, an id,
+    a directory — and a manifest can override any of it, because a server that
+    should be pinned to one sandbox ought to be able to say so. The exception
+    is `AGENT_TRACER_OPTIONS`: it carries `environment.options`, which is where
+    a backend's credentials go, so only a manifest that declares
+    `sandbox_options` is given it.
     """
     from stirrup.tools.mcp import MCPConfig, StdioServerConfig, StreamableHttpServerConfig
 
@@ -235,7 +259,7 @@ def build_stirrup_mcp_config(
             }
             # Manifest last: a server that wants a different sandbox is allowed
             # to say so.
-            env = {**(sandbox or {}), **env}
+            env = {**_sandbox_for(m, sandbox), **env}
             # PYTHONPATH is the exception, because it is not the manifest's to
             # take away: it is what lets a spawned server import the package
             # that spawned it, and `environments.from_env()` is the first line

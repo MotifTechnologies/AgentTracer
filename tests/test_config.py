@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from agent_tracer.config import ConfigError, load_config
 from agent_tracer.config.schema import (
+    EnvironmentConfig,
     MCPDiscoveryConfig,
     ModelConfig,
     RunnerConfig,
@@ -37,6 +38,33 @@ class TestApiKey:
     def test_empty_key_refuses_to_run(self):
         with pytest.raises(ConfigError, match="refusing to run"):
             resolve_env_ref("", field="model.api_key")
+
+
+class TestEnvironmentOptions:
+    """`options` is what `attach()` takes, so it is where a backend's key goes
+    — `e2b.attach` reads `api_key` out of it. It was handed on untouched, so
+    `api_key: env:E2B_API_KEY` passed that literal string to `Sandbox.connect`
+    and a plaintext key in the YAML was the only thing that worked."""
+
+    def test_an_env_ref_resolves(self, monkeypatch):
+        monkeypatch.setenv("AT_TEST_E2B", "sk-e2b")
+        config = EnvironmentConfig(type="e2b", image="t", options={"api_key": "env:AT_TEST_E2B"})
+
+        assert config.resolved_options() == {"api_key": "sk-e2b"}
+
+    def test_a_literal_still_passes_through(self):
+        config = EnvironmentConfig(type="e2b", image="t", options={"user": "someone"})
+
+        assert config.resolved_options() == {"user": "someone"}
+
+    def test_an_unset_ref_refuses_to_run(self, monkeypatch):
+        monkeypatch.delenv("AT_TEST_MISSING_E2B", raising=False)
+        config = EnvironmentConfig(
+            type="e2b", image="t", options={"api_key": "env:AT_TEST_MISSING_E2B"}
+        )
+
+        with pytest.raises(ConfigError, match="AT_TEST_MISSING_E2B"):
+            config.resolved_options()
 
 
 class TestReasoningKey:
@@ -98,3 +126,15 @@ model:
     def test_a_backend_that_exists_still_loads(self, tmp_path):
         config = load_config(self._write(tmp_path, "environment: {type: docker, image: x}"))
         assert config.environment.type == "docker"
+
+    def test_a_backend_option_that_cannot_be_resolved_is_refused_at_startup(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.delenv("AT_TEST_MISSING_E2B", raising=False)
+        environment = (
+            "environment: {type: docker, image: x, "
+            "options: {api_key: 'env:AT_TEST_MISSING_E2B'}}"
+        )
+
+        with pytest.raises(ConfigError, match="AT_TEST_MISSING_E2B"):
+            load_config(self._write(tmp_path, environment))

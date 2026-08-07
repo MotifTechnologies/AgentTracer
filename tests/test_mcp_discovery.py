@@ -1,8 +1,10 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
 
+import agent_tracer
 from agent_tracer.config.schema import ConfigError, MCPDiscoveryConfig
 from agent_tracer.mcp.discovery import build_stirrup_mcp_config, discover_mcp_servers
 
@@ -92,6 +94,30 @@ class TestStirrupMapping:
         server = mcp_config.mcp_servers["alpha"]
         assert server.command == "uv"
         assert server.cwd == str((tmp_path / "alpha").resolve())
+
+    def test_a_manifest_adds_to_pythonpath_rather_than_replacing_it(self, tmp_path):
+        """The package path is what lets a spawned server import the package it
+        was spawned by — `environments.from_env()` is the first line of every
+        sandbox-bound server. A manifest naming its own PYTHONPATH took that
+        away entirely, and the server could not start."""
+        _server(tmp_path, "alpha", env={"PYTHONPATH": "/opt/vendor/lib"})
+        manifests = discover_mcp_servers(_cfg(tmp_path))
+
+        env = build_stirrup_mcp_config(manifests, tmp_path).mcp_servers["alpha"].env
+
+        entries = env["PYTHONPATH"].split(os.pathsep)
+        assert "/opt/vendor/lib" in entries, env
+        assert str(Path(agent_tracer.__file__).resolve().parent.parent) in entries, env
+
+    def test_the_sandbox_description_is_still_a_manifest_s_to_override(self, tmp_path):
+        _server(tmp_path, "alpha", env={"AGENT_TRACER_ENV_TYPE": "local"})
+        manifests = discover_mcp_servers(_cfg(tmp_path))
+
+        env = build_stirrup_mcp_config(
+            manifests, tmp_path, {"AGENT_TRACER_ENV_TYPE": "docker"}
+        ).mcp_servers["alpha"].env
+
+        assert env["AGENT_TRACER_ENV_TYPE"] == "local"
 
 
 class TestHttpServers:

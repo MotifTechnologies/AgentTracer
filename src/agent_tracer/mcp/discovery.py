@@ -10,6 +10,7 @@ dataset's tool distribution (fail-fast, same policy as api_key/reasoning_key).
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -211,9 +212,18 @@ def build_stirrup_mcp_config(
                 var: (resolve_env_ref(val, field=f"mcp[{name}].env.{var}") if val.startswith("env:") else val)
                 for var, val in m.env.items()
             }
-            # Manifest last: a server that wants a different sandbox, or its
-            # own import path, is allowed to say so.
-            env = {"PYTHONPATH": _package_path(), **(sandbox or {}), **env}
+            # Manifest last: a server that wants a different sandbox is allowed
+            # to say so.
+            env = {**(sandbox or {}), **env}
+            # PYTHONPATH is the exception, because it is not the manifest's to
+            # take away: it is what lets a spawned server import the package
+            # that spawned it, and `environments.from_env()` is the first line
+            # of every sandbox-bound server. Prepended, so a server can still
+            # add its own.
+            declared = env.get("PYTHONPATH")
+            env["PYTHONPATH"] = (
+                f"{_package_path()}{os.pathsep}{declared}" if declared else _package_path()
+            )
             servers[name] = StdioServerConfig(
                 command=m.command,
                 args=m.args,

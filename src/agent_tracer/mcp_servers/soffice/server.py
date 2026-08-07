@@ -79,15 +79,19 @@ def _convert(source: str, to_format: str, out_dir: str, timeout_s: int) -> str:
     #
     # `soffice` reports success even when it silently writes nothing, so the
     # marker is the output file's mtime rather than the exit code.
+    #
+    # `%.Y` and not `%Y`: whole seconds cannot tell a rewrite from an untouched
+    # file when both conversions land in the same second, and the tool then
+    # reports a conversion that did happen as one that did not.
     script = (
         "set -e; "
         'profile=$(mktemp -d); trap "rm -rf $profile" EXIT; '
         f"mkdir -p {shlex.quote(out_dir)}; "
-        f"before=$(stat -c %Y {shlex.quote(expected)} 2>/dev/null || echo none); "
+        f"before=$(stat -c %.Y {shlex.quote(expected)} 2>/dev/null || echo none); "
         'soffice "-env:UserInstallation=file://$profile" --headless --norestore '
         f"--nolockcheck --convert-to {shlex.quote(to_format)} "
         f"--outdir {shlex.quote(out_dir)} {shlex.quote(source)}; "
-        f"after=$(stat -c %Y {shlex.quote(expected)} 2>/dev/null || echo none); "
+        f"after=$(stat -c %.Y {shlex.quote(expected)} 2>/dev/null || echo none); "
         '[ "$after" != "none" ] || { echo "no output file produced" >&2; exit 90; }; '
         '[ "$before" != "$after" ] || { echo "existing file left untouched" >&2; exit 91; }'
     )
@@ -114,8 +118,14 @@ def convert_document(
         timeout_s: Abort the conversion after this many seconds.
     """
     source = _abs(path)
-    fmt = to_format.lower().lstrip(".")
-    base_fmt = fmt.split(":")[0]
+    # Only the extension folds. Everything after the first colon is
+    # LibreOffice's own filter name and is case-sensitive: `writer_pdf_Export`
+    # is a filter and `writer_pdf_export` is not, and soffice reports success
+    # either way — so lowercasing the whole string wrote nothing and said
+    # nothing about why.
+    base_fmt, colon, filter_name = to_format.lstrip(".").partition(":")
+    base_fmt = base_fmt.lower()
+    fmt = base_fmt + colon + filter_name
     if base_fmt not in SUPPORTED_TARGET_FORMATS:
         raise ValueError(
             f"Unsupported target format {base_fmt!r}. "

@@ -30,6 +30,29 @@ from mcp.client.stdio import stdio_client
 HERE = Path(__file__).parent
 MANIFEST = json.loads((HERE / "mcp.json").read_text())
 
+#: Stands in for LibreOffice, which is not installed everywhere and is not the
+#: part under test: what this process controls is the command it builds and how
+#: it decides a conversion happened. Records its arguments, then writes the file
+#: a real `soffice` would have written.
+STUB_SOFFICE = """#!/bin/sh
+printf '%s\\n' "$*" >> "{log}"
+outdir=""; src=""; fmt=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --convert-to) fmt="$2"; shift 2;;
+    --outdir) outdir="$2"; shift 2;;
+    -*) shift;;
+    *) src="$1"; shift;;
+  esac
+done
+stem=$(basename "$src"); stem="${{stem%.*}}"
+printf 'converted\\n' > "$outdir/$stem.${{fmt%%:*}}"
+"""
+
+
+def _payload(result):
+    return json.loads(result.content[0].text)
+
 
 async def main() -> None:
     workdir = Path(tempfile.mkdtemp())
@@ -83,6 +106,47 @@ async def main() -> None:
             text = await session.call_tool("extract_text", {"path": "note.txt"})
             assert "중간보고서" in text.content[0].text, text.content[0].text
             print("extract_text -> Korean survived the round trip")
+
+    # The conversion path, against a stub, so it is covered with or without a
+    # real LibreOffice on this machine.
+    stub_dir = Path(tempfile.mkdtemp())
+    log = stub_dir / "argv.log"
+    (stub_dir / "soffice").write_text(STUB_SOFFICE.format(log=log))
+    (stub_dir / "soffice").chmod(0o755)
+
+    params = StdioServerParameters(
+        command=MANIFEST["command"],
+        args=MANIFEST["args"],
+        cwd=str(HERE),
+        env={
+            "AGENT_TRACER_WORKDIR": str(workdir),
+            "PATH": f"{stub_dir}{os.pathsep}{os.environ['PATH']}",
+            "PYTHONPATH": str(HERE.parents[2]),
+        },
+    )
+    async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
+        await session.initialize()
+
+        # Everything after the first colon is LibreOffice's own filter name and
+        # is case-sensitive. `to_format.lower()` lowercased the whole string, so
+        # `pdf:writer_pdf_Export` reached the converter as `writer_pdf_export`,
+        # which is not a filter it has — and soffice reports success either way.
+        out = _payload(await session.call_tool(
+            "convert_document", {"path": "note.txt", "to_format": "PDF:writer_pdf_Export"}))
+        assert out["format"] == "pdf", out
+        recorded = log.read_text()
+        assert "--convert-to pdf:writer_pdf_Export" in recorded, recorded
+        print("convert_document -> ok, the extension folds and the filter name does not")
+
+        # `stat -c %Y` is whole seconds, and comparing it before and after is
+        # the only thing that says a conversion happened. Two conversions
+        # landing in the same second read as one that wrote nothing.
+        (workdir / "again.txt").write_text("x\n", encoding="utf-8")
+        for attempt in (1, 2):
+            out = await session.call_tool(
+                "convert_document", {"path": "again.txt", "to_format": "pdf"})
+            assert not out.is_error, f"attempt {attempt}: {out.content[0].text}"
+        print("convert_document twice within a second -> ok, not reported as untouched")
 
     print("smoke test OK")
 

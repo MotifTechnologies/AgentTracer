@@ -39,6 +39,9 @@ async def main() -> None:
     (workdir / "sub" / "data.csv").write_text("id,name\n1,중간보고서\n", encoding="utf-8")
     # Not valid UTF-8. Reading it must not kill the call.
     (workdir / "raw.bin").write_bytes(b"\xff\xfe binary \x00 bytes")
+    # A latin-1 CSV — the everyday not-quite-UTF-8 file. An edit to one row
+    # must leave every other byte exactly as it was.
+    (workdir / "latin.csv").write_bytes(b"id,name\n1,caf\xe9\n2,na\xefve\n")
 
     params = StdioServerParameters(
         command=MANIFEST["command"],
@@ -107,6 +110,17 @@ async def main() -> None:
             "path": "note.txt", "old_string": "not-there", "new_string": "z"})
         assert bad.is_error and "does not appear" in bad.content[0].text, bad.content[0].text
         print("edit_file no match -> refused")
+
+        # This tool exists because a bad `sed -i` corrupts a file silently.
+        # Decoding with errors="replace" and writing the result back does the
+        # same thing: every byte that is not UTF-8 becomes U+FFFD, including in
+        # the rows the edit never mentioned.
+        out = _payload(await session.call_tool("edit_file", {
+            "path": "latin.csv", "old_string": "1,", "new_string": "9,"}))
+        assert out["replacements"] == 1, out
+        assert (workdir / "latin.csv").read_bytes() == b"id,name\n9,caf\xe9\n2,na\xefve\n", \
+            (workdir / "latin.csv").read_bytes()
+        print("edit_file on a latin-1 file -> ok, the untouched rows are byte-identical")
 
         out = _payload(await session.call_tool("list_directory", {"path": "."}))
         kinds = {e["name"]: e["type"] for e in out["entries"]}

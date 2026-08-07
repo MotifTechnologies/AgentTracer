@@ -150,8 +150,14 @@ def edit_file(path: str, old_string: str, new_string: str, replace_all: bool = F
         replace_all: Replace every occurrence instead of requiring exactly one.
     """
     target = _abs(path)
-    text = _decode(_read_bytes(target))
-    count = text.count(old_string)
+    # Matched and replaced as bytes. Decoding with errors="replace" and writing
+    # the result back turns every byte that is not UTF-8 into U+FFFD — in the
+    # whole file, not just the edited part — which is the silent corruption
+    # this tool exists to avoid. A file that is not UTF-8 at all simply does
+    # not match a non-ASCII `old_string`, and says so.
+    raw = _read_bytes(target)
+    old, new = old_string.encode("utf-8"), new_string.encode("utf-8")
+    count = raw.count(old)
 
     if count == 0:
         raise ValueError(f"{old_string!r} does not appear in {target} — nothing was changed.")
@@ -161,7 +167,7 @@ def edit_file(path: str, old_string: str, new_string: str, replace_all: bool = F
             "surrounding text to make it unique, or pass replace_all=true."
         )
 
-    _write_bytes(target, text.replace(old_string, new_string).encode("utf-8"))
+    _write_bytes(target, raw.replace(old, new) if replace_all else raw.replace(old, new, 1))
     return {"path": target, "replacements": count if replace_all else 1}
 
 

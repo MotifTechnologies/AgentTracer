@@ -85,3 +85,16 @@ model:
     def test_bad_override_shape(self, tmp_path):
         with pytest.raises(ConfigError):
             load_config(self._write(tmp_path), ["runner.max_concurrency"])
+
+    def test_an_environment_type_that_does_not_exist_is_refused(self, tmp_path):
+        """`type` is a str rather than a Literal so a backend can be installed
+        rather than merged, and nothing checked it until `build_provider` ran —
+        inside `Runner._run_one`'s `except Exception`. A typo was a per-task
+        failure retried three times, once for every task, instead of a config
+        the run refuses to start with."""
+        with pytest.raises(ConfigError, match="dokcer"):
+            load_config(self._write(tmp_path, "environment: {type: dokcer, image: x}"))
+
+    def test_a_backend_that_exists_still_loads(self, tmp_path):
+        config = load_config(self._write(tmp_path, "environment: {type: docker, image: x}"))
+        assert config.environment.type == "docker"

@@ -70,6 +70,16 @@ def _load(env_type: str) -> _Backend:
     )
 
 
+def ensure_installed(env_type: str) -> None:
+    """Refuse a backend that is not there, once, before any task runs.
+
+    The registry is asked and the answer thrown away: what matters is that it
+    raises here — at config load — rather than in `build_provider` under the
+    runner's per-task error handling.
+    """
+    _load(env_type)
+
+
 def build_provider(config: EnvironmentConfig, *, task_id: str | None = None) -> Any:
     """The `CodeExecToolProvider` this configuration asks for."""
     return _load(config.type).build(config, task_id=task_id)

@@ -190,3 +190,11 @@ class RunConfig(StrictModel):
         self.model.resolved_api_key()
         if not self.model.reasoning_key:
             raise ConfigError("model.reasoning_key: required — refusing to run")
+        # `environment.type` is a str, so the registry is the only thing that
+        # knows whether it names a backend. Left to `build_provider`, the first
+        # check happens per task inside `Runner._run_one`'s `except Exception`,
+        # and a typo becomes three retries and an error trajectory for every
+        # task in the dataset rather than a config the run refuses to start on.
+        from agent_tracer.environments import ensure_installed
+
+        ensure_installed(self.environment.type)

@@ -23,7 +23,7 @@ timezone path turns into a message naming the fix. A host without zone data can
 add `tzdata` to this script's dependencies.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from mcp.server import MCPServer
@@ -41,10 +41,15 @@ def _zone(name: str) -> ZoneInfo:
         ) from exc
 
 
-def _describe(moment: datetime) -> dict:
+def _offset(moment: datetime) -> str:
+    """The moment's offset from UTC, as +HH:MM."""
     offset = moment.utcoffset()
     total_minutes = int(offset.total_seconds() // 60) if offset else 0
     sign = "+" if total_minutes >= 0 else "-"
+    return f"{sign}{abs(total_minutes) // 60:02d}:{abs(total_minutes) % 60:02d}"
+
+
+def _describe(moment: datetime) -> dict:
     return {
         "timezone": str(moment.tzinfo),
         "datetime": moment.isoformat(),
@@ -54,9 +59,36 @@ def _describe(moment: datetime) -> dict:
         # Named separately because a model asked to "show the offset" otherwise
         # reads it off the ISO string, and gets the sign wrong about as often
         # as not.
-        "utc_offset": f"{sign}{abs(total_minutes) // 60:02d}:{abs(total_minutes) % 60:02d}",
+        "utc_offset": _offset(moment),
         "is_dst": bool(moment.dst()),
     }
+
+
+def _reject_unreal(naive: datetime, zone: ZoneInfo, zone_name: str, given: str) -> None:
+    """Refuse a wall clock that never happens, or that happens twice.
+
+    `replace(tzinfo=...)` takes any local time at face value and reads it with
+    fold=0. On the two days a year a zone shifts, that is either an answer to a
+    question with none, or one of two equally correct answers given as if it
+    were the only one — and a DST boundary is exactly what a task asking this
+    server anything is likely to be testing.
+    """
+    earlier = naive.replace(tzinfo=zone, fold=0)
+    later = naive.replace(tzinfo=zone, fold=1)
+
+    # A skipped wall clock does not survive a round trip through UTC: the
+    # instant it maps to reads back as a different local time.
+    if earlier.astimezone(UTC).astimezone(zone).replace(tzinfo=None) != naive:
+        raise ValueError(
+            f"{given!r} does not exist in {zone_name} — the clock skips that hour when "
+            "daylight saving starts. Pick a time outside the gap, or give it in UTC."
+        )
+    if earlier.utcoffset() != later.utcoffset():
+        raise ValueError(
+            f"{given!r} happens twice in {zone_name} — once at {_offset(earlier)} and "
+            f"again at {_offset(later)}, when daylight saving ends. Say which one by "
+            "giving the time in UTC."
+        )
 
 
 @mcp.tool()
@@ -72,6 +104,10 @@ def current_time(timezone: str = "UTC") -> dict:
 @mcp.tool()
 def convert_time(datetime_str: str, from_timezone: str, to_timezone: str) -> dict:
     """Convert a wall-clock time from one timezone to another.
+
+    A local time that a daylight-saving change skips, or that it repeats, is
+    refused rather than answered: the first has no reading and the second has
+    two. Give such a time in UTC instead.
 
     Args:
         datetime_str: The time to convert, ISO 8601, e.g. "2026-08-06T14:30" or
@@ -89,6 +125,7 @@ def convert_time(datetime_str: str, from_timezone: str, to_timezone: str) -> dic
             "Use ISO 8601, e.g. '2026-08-06T14:30'."
         ) from exc
 
+    _reject_unreal(naive, source, from_timezone, datetime_str)
     origin = naive.replace(tzinfo=source)
     converted = origin.astimezone(target)
     return {

@@ -104,6 +104,40 @@ async def main() -> None:
         assert bad.is_error and "ISO 8601" in bad.content[0].text, bad.content[0].text
         print("unparseable time -> refused, and says what it wants")
 
+        # The two hours a year a wall clock is not a time, which is the whole
+        # reason this server exists. `replace(tzinfo=...)` validates neither and
+        # defaults to fold=0, so both came back as a confident single answer.
+        #
+        # 01:30 on 1 Nov 2026 in New York happens twice — once at -04:00 and
+        # again an hour later at -05:00. Picking one is picking half the time.
+        bad = await session.call_tool("convert_time", {
+            "datetime_str": "2026-11-01T01:30",
+            "from_timezone": "America/New_York", "to_timezone": "UTC"})
+        assert bad.is_error, bad.content[0].text
+        message = bad.content[0].text
+        assert "twice" in message and "-04:00" in message and "-05:00" in message, message
+        print("convert_time on a repeated hour -> refused, and names both offsets")
+
+        # 02:30 on 8 Mar 2026 in New York never happens: the clock goes 01:59:59
+        # to 03:00:00. It was accepted and answered as though it did.
+        bad = await session.call_tool("convert_time", {
+            "datetime_str": "2026-03-08T02:30",
+            "from_timezone": "America/New_York", "to_timezone": "UTC"})
+        assert bad.is_error, bad.content[0].text
+        assert "does not exist" in bad.content[0].text, bad.content[0].text
+        print("convert_time on a skipped hour -> refused, and says so")
+
+        # An hour either side of the same boundary is ordinary and must convert.
+        out = _payload(await session.call_tool("convert_time", {
+            "datetime_str": "2026-11-01T00:30",
+            "from_timezone": "America/New_York", "to_timezone": "UTC"}))
+        assert out["to"]["time"] == "04:30:00", out
+        out = _payload(await session.call_tool("convert_time", {
+            "datetime_str": "2026-11-01T03:30",
+            "from_timezone": "America/New_York", "to_timezone": "UTC"}))
+        assert out["to"]["time"] == "08:30:00", out
+        print("convert_time either side of the boundary -> ok, still converts")
+
     print("smoke test OK")
 
 

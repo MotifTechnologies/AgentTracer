@@ -63,7 +63,13 @@ class _DockerAccess:
         argv = ["docker", "exec"]
         if self._user:
             argv += ["--user", self._user]
-        argv += [self._container_id, "sh", "-lc", command]
+        # `-c`, not `-lc`: a login shell sources /etc/profile and ~/.profile,
+        # and whatever they print arrives on the stdout every sandbox-bound
+        # server parses — base64 payloads, NUL-separated names, JSON. One that
+        # `cd`s also moves what a relative path meant. stirrup's own code_exec
+        # runs `bash -c`, so this is what keeps the agent's environment and its
+        # tools' the same environment.
+        argv += [self._container_id, "sh", "-c", command]
         proc = subprocess.run(
             argv,
             capture_output=True,

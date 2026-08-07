@@ -106,6 +106,34 @@ class TestBuild:
             _load("e2b").build(_cfg(type="e2b"), task_id=None)
 
 
+class TestAttach:
+    def test_docker_runs_a_plain_shell_not_a_login_shell(self, monkeypatch):
+        """`sh -lc` sources /etc/profile and ~/.profile, and whatever they print
+        lands on stdout — which is the channel every sandbox-bound server parses:
+        base64 payloads in filesystem, NUL-separated records in list_directory,
+        JSON in sqlite. A profile that echoes one line corrupts all three, and
+        one that `cd`s moves what a relative path meant.
+
+        It was also the only login shell in the project: stirrup's own code_exec
+        runs `bash -c` and the local backend runs `sh -c`, so the agent and its
+        tools saw two different environments on docker alone.
+        """
+        module = _load("docker")
+        seen: dict[str, object] = {}
+
+        def fake_run(argv, **kwargs):
+            seen["argv"] = argv
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+        module.attach("abc123", {"user": "someone"}).exec("echo hi")
+
+        assert seen["argv"] == [
+            "docker", "exec", "--user", "someone", "abc123", "sh", "-c", "echo hi",
+        ]
+
+
 class TestDescribe:
     def test_local_reports_the_directory_commands_actually_run_in(self):
         """Not `working_dir`.

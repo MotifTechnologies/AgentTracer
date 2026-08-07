@@ -154,6 +154,32 @@ async def main() -> None:
         assert out["count"] == 0, out
         print("search_content no matches -> empty, not an error")
 
+        # `head` ends the pipeline, so the exit code that comes back is head's
+        # and find's or grep's is lost. A directory that is not there read
+        # exactly like a directory with nothing in it.
+        for tool in ("search_files", "search_content"):
+            bad = await session.call_tool(tool, {"pattern": "*", "path": "no/such/dir"})
+            assert bad.is_error, f"{tool}: {bad.content[0].text}"
+        print("search on a path that is not there -> refused, not answered 'none'")
+
+        # A negative cap became `head -n -1`, which prints all but the last line
+        # — a truncated answer presented as the whole one.
+        for tool in ("search_files", "search_content"):
+            for cap in (-1, 0):
+                bad = await session.call_tool(tool, {"pattern": "a", "max_results": cap})
+                assert bad.is_error, f"{tool} max_results={cap}: {bad.content[0].text}"
+        print("search with max_results < 1 -> refused")
+
+        # Matches were split on ":" into path, line, text. A colon in the
+        # filename put a fragment of the name where the line number goes, and
+        # int() on it killed the call.
+        (workdir / "we:ird.txt").write_text("alpha\nneedle here\n", encoding="utf-8")
+        out = _payload(await session.call_tool("search_content", {"pattern": "needle here"}))
+        assert out["count"] == 1, out
+        assert out["matches"][0]["line"] == 2, out
+        assert out["matches"][0]["path"].endswith("we:ird.txt"), out
+        print("search_content with a colon in the path -> ok")
+
         await session.call_tool("create_directory", {"path": "made/up"})
         assert (workdir / "made" / "up").is_dir()
         await session.call_tool("move_file", {"source": "note.txt", "destination": "made/up/moved.txt"})

@@ -214,16 +214,23 @@ def search_files(pattern: str, path: str = ".", max_results: int = 100) -> dict:
 
     Args:
         pattern: Filename glob, e.g. "*.csv" or "test_*.py".
-        path: Directory to search under.
+        path: Directory to search under. Must exist.
         max_results: Stop after this many matches.
     """
-    target = _abs(path)
+    if max_results < 1:
+        raise ValueError("max_results must be >= 1")
+
+    target = shlex.quote(_abs(path))
+    # The directory is checked here rather than left to `find`: `head` ends the
+    # pipeline, so its exit code is the one that comes back and find's is lost —
+    # a directory that is not there would read as one with nothing in it.
     rc, out, err = _run(
-        f"find {shlex.quote(target)} -name {shlex.quote(pattern)} -type f 2>/dev/null | "
-        f"head -n {int(max_results)}"
+        f"[ -d {target} ] || {{ echo 'no such directory' >&2; exit 21; }}; "
+        f"find {target} -name {shlex.quote(pattern)} -type f 2>/dev/null | "
+        f"head -n {max_results}"
     )
-    if rc != 0 and not out:
-        raise RuntimeError(f"Search failed in {target}: {err.strip()[:200]}")
+    if rc != 0:
+        raise RuntimeError(f"Search failed in {_abs(path)}: {(err.strip() or out.strip())[:200]}")
 
     matches = [line for line in out.splitlines() if line]
     return {"pattern": pattern, "matches": matches, "count": len(matches)}
@@ -235,25 +242,33 @@ def search_content(pattern: str, path: str = ".", max_results: int = 100) -> dic
 
     Args:
         pattern: Extended regular expression to search for.
-        path: File or directory to search.
+        path: File or directory to search. Must exist.
         max_results: Stop after this many matching lines.
     """
-    target = _abs(path)
+    if max_results < 1:
+        raise ValueError("max_results must be >= 1")
+
+    target = shlex.quote(_abs(path))
     # `-H` because grep omits the filename prefix when it is given exactly one
     # file operand, even under `-r` — and every match here is parsed on it.
+    # `-Z` because the prefix is otherwise ended by ":", which a filename is
+    # allowed to contain. The path is checked here for the same reason as in
+    # search_files: `head` ends the pipeline and grep's exit code is lost, so a
+    # path that is not there would read as a file with no matches in it.
     rc, out, err = _run(
-        f"grep -rHnIE {shlex.quote(pattern)} {shlex.quote(target)} 2>/dev/null | "
-        f"head -n {int(max_results)}"
+        f"[ -e {target} ] || {{ echo 'no such file or directory' >&2; exit 21; }}; "
+        f"grep -rHnIEZ {shlex.quote(pattern)} {target} 2>/dev/null | "
+        f"head -n {max_results}"
     )
-    # grep exits 1 for "no matches", which is an answer rather than a failure.
-    if rc > 1 and not out:
-        raise RuntimeError(f"Search failed in {target}: {err.strip()[:200]}")
+    if rc != 0:
+        raise RuntimeError(f"Search failed in {_abs(path)}: {(err.strip() or out.strip())[:200]}")
 
     matches = []
     for line in out.splitlines():
-        parts = line.split(":", 2)
-        if len(parts) == 3:
-            matches.append({"path": parts[0], "line": int(parts[1]), "text": parts[2]})
+        name, _, rest = line.partition("\0")
+        number, _, text = rest.partition(":")
+        if number.isdigit():
+            matches.append({"path": name, "line": int(number), "text": text})
     return {"pattern": pattern, "matches": matches, "count": len(matches)}
 
 

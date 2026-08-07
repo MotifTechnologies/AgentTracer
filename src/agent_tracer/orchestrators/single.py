@@ -156,6 +156,14 @@ class SingleAgentOrchestrator:
                     )
                 )
 
+            # Uploaded through the provider rather than `session(input_files=...)`:
+            # the session is handed the resolved tool, not the provider, so stirrup
+            # has no exec env to upload into by the time it looks. The temp copy is
+            # only needed until the bytes are in the sandbox.
+            with _materialized_attachments(task) as workspace:
+                if workspace is not None:
+                    await exec_provider.upload_files(workspace)
+
             return await self._run_agent(task, trajectory, agent_id, recorder, tools)
 
     def _task_mcp_config(self, provider: Any) -> Any:
@@ -191,18 +199,7 @@ class SingleAgentOrchestrator:
             logger=recorder,
         )
 
-        with _materialized_attachments(task) as workspace:
-            return await self._run_session(agent, task, trajectory, agent_id, workspace)
-
-    async def _run_session(
-        self,
-        agent: Agent,
-        task: Task,
-        trajectory: Trajectory,
-        agent_id: str,
-        workspace: Path | None,
-    ) -> dict[str, Any]:
-        async with agent.session(input_files=str(workspace) if workspace else None) as session:
+        async with agent.session() as session:
             # Record the resolved tool specs (post provider/MCP resolution) and the
             # system prompt so exporters can reconstruct training-format records.
             # The prompt must be the ASSEMBLED one (stirrup base + custom): training

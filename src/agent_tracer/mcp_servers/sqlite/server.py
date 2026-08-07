@@ -147,6 +147,13 @@ def _call(database: str, sql: str, params: SqlParams, mode: str, max_rows: int =
     except (ValueError, IndexError) as exc:
         raise RuntimeError(f"Unexpected output from the sandbox: {out.strip()[:300]}") from exc
 
+    # Parsing is not the same as being ours. Whatever else the sandbox printed
+    # last — a login shell's banner, a wrapper's own output — parses too when it
+    # happens to be JSON, and indexing it raised TypeError from here rather than
+    # the message that quotes what was actually on stdout.
+    if not isinstance(reply, dict) or "ok" not in reply:
+        raise RuntimeError(f"Unexpected output from the sandbox: {out.strip()[:300]}")
+
     if not reply["ok"]:
         # SQLite's own message — "no such table: x", "syntax error near ..." —
         # is what the model needs to fix the query, so it is passed through.

@@ -178,6 +178,33 @@ async def main() -> None:
         assert json.loads(raw)["rows"] == [[{"float": "Infinity"}]], raw
         print("query on a non-finite float -> ok, and the reply is valid JSON")
 
+    # A sandbox whose last line of stdout parses as JSON but is not our reply —
+    # a login shell's banner, a wrapper's own output. The docker backend runs
+    # `sh -lc`, which is where that really happens; a stub `docker` stands in
+    # for one here. Indexing the parsed value raised TypeError past the
+    # handler, so the model got that instead of the line that was printed.
+    shim = Path(tempfile.mkdtemp())
+    (shim / "docker").write_text("#!/bin/sh\necho '[1, 2]'\n")
+    (shim / "docker").chmod(0o755)
+    params = StdioServerParameters(
+        command=MANIFEST["command"],
+        args=MANIFEST["args"],
+        cwd=str(HERE),
+        env={
+            "AGENT_TRACER_ENV_TYPE": "docker",
+            "AGENT_TRACER_SANDBOX_ID": "stub",
+            "AGENT_TRACER_WORKDIR": str(workdir),
+            "PATH": f"{shim}{os.pathsep}{os.environ['PATH']}",
+            "PYTHONPATH": str(HERE.parents[2]),
+        },
+    )
+    async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
+        await session.initialize()
+        bad = await session.call_tool("query", {"database": db, "sql": "SELECT 1"})
+        assert bad.is_error, bad.content[0].text
+        assert "Unexpected output" in bad.content[0].text, bad.content[0].text
+        print("a reply that is not ours -> refused, and quotes what was printed")
+
     print("smoke test OK")
 
 

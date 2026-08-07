@@ -78,6 +78,16 @@ def run(config_path: str, overrides: tuple[str, ...]) -> None:
 @click.option("--subset", default=None, help="source.subset")
 @click.option("--category", default=None, help="record category")
 @click.option("--include-errors", is_flag=True, help="Also export error-status trajectories")
+@click.option(
+    "--require-correct",
+    is_flag=True,
+    help="Keep only rollouts whose recorded verdict is correct (aborts on ungraded ones)",
+)
+@click.option(
+    "--best-per-task",
+    is_flag=True,
+    help="Rejection sampling: keep the shortest correct rollout per task, one record each",
+)
 def export(
     trajectory_dir: str,
     export_format: str,
@@ -87,11 +97,13 @@ def export(
     subset: str | None,
     category: str | None,
     include_errors: bool,
+    require_correct: bool,
+    best_per_task: bool,
 ) -> None:
     """Export trajectories to training formats (ShareGPT JSONL / HF Dataset / GRPO)."""
     from pathlib import Path
 
-    from agent_tracer.export.sharegpt import load_records
+    from agent_tracer.export.sharegpt import UngradedTrajectoryError, load_records
 
     defaults = {
         "sharegpt": "results/dataset.jsonl",
@@ -100,14 +112,20 @@ def export(
     }
     out = Path(output_path or defaults[export_format])
 
-    records, skipped = load_records(
-        Path(trajectory_dir),
-        name=name,
-        split=split,
-        subset=subset,
-        category=category,
-        include_errors=include_errors,
-    )
+    try:
+        records, skipped, stats = load_records(
+            Path(trajectory_dir),
+            name=name,
+            split=split,
+            subset=subset,
+            category=category,
+            include_errors=include_errors,
+            require_correct=require_correct,
+            best_per_task=best_per_task,
+        )
+    except UngradedTrajectoryError as e:
+        click.secho(f"export error: {e}", fg="red", err=True)
+        sys.exit(2)
 
     if export_format == "sharegpt":
         import json
@@ -126,9 +144,10 @@ def export(
 
         written = records_to_grpo_jsonl(records, out)
 
+    detail = "".join(f", {k.replace('_', ' ')} {v}" for k, v in stats.items() if v)
     click.echo(
         f"exported {written} records ({export_format}) to {out} "
-        f"(skipped {skipped} error trajectories)"
+        f"(skipped {skipped} error trajectories{detail})"
     )
 
 

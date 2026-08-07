@@ -32,7 +32,7 @@ mcp:
 runner:
   # Rollouts per task. >1 for best-of-N / rejection sampling: sample
   # repeatedly, keep what passed. Each sample is checkpointed separately.
-  samples_per_task: 1
+  samples_per_task: 2
   # Raise once the vLLM saturation point is known; watch the tok/s in the bar.
   max_concurrency: 32
   task_timeout: 1800

@@ -9,7 +9,6 @@ file" rather than failing where the mistake is.
 
 from __future__ import annotations
 
-import contextlib
 import subprocess
 import sys
 import textwrap
@@ -53,7 +52,7 @@ class TestRegistry:
 
             from agent_tracer.environments import attach
 
-            for backend in ("local", "docker", "e2b"):
+            for backend in ("local", "docker"):
                 attach(backend, "some-id", {})
             """
         )
@@ -77,8 +76,7 @@ class TestBuild:
 
     Ignoring one is the worst of the three answers: `local` dropped
     `allowed_commands` and stirrup reads `None` as "every command allowed", so
-    an explicit restriction became no restriction. `e2b` dropped `mem_limit`
-    and `pids_limit`, so moving a config from docker to e2b lost both security
+    an explicit restriction became no restriction.
     caps and said nothing.
     """
 
@@ -91,19 +89,6 @@ class TestBuild:
         provider = _load("local").build(_cfg(type="local"), task_id=None)
 
         assert provider._allowed_commands is None
-
-    def test_e2b_refuses_the_caps_it_cannot_apply(self):
-        """Refused before the SDK is imported, so this is the answer whether or
-        not the e2b extra is installed."""
-        for cap in ({"mem_limit": "1g"}, {"pids_limit": 64}):
-            with pytest.raises(ConfigError, match=next(iter(cap))):
-                _load("e2b").build(_cfg(type="e2b", **cap), task_id=None)
-
-    def test_e2b_is_not_refused_over_a_default_it_was_never_given(self):
-        """The caps default to docker's values for every environment, so only a
-        config that names one is refused."""
-        with contextlib.suppress(ImportError):  # the e2b extra is optional
-            _load("e2b").build(_cfg(type="e2b"), task_id=None)
 
 
 class TestAttach:
@@ -157,26 +142,6 @@ class TestDescribe:
         assert out["workdir"] == "/workspace"
         assert out["host_dir"] == "/tmp/host"
         assert out["user"] == "user"
-
-    def test_e2b_mounts_nothing_of_ours(self):
-        provider = SimpleNamespace(_sbx=SimpleNamespace(sandbox_id="sbx_1"))
-        out = describe(_cfg(type="e2b"), provider)
-
-        assert out["sandbox_id"] == "sbx_1"
-        assert out["host_dir"] is None
-
-    def test_e2b_reports_the_root_stirrup_pins_it_to(self):
-        """Not `working_dir`, whose default is `/workspace`.
-
-        stirrup's E2B provider takes no working directory: it runs everything
-        under its own `E2B_WORKING_DIR` and rejects paths outside it. A server
-        resolving `data.csv` against the configured value would read
-        `/workspace/data.csv` while code_exec had written `/home/user/data.csv`.
-        """
-        provider = SimpleNamespace(_sbx=SimpleNamespace(sandbox_id="sbx_1"))
-        out = describe(_cfg(type="e2b", working_dir="/workspace"), provider)
-
-        assert out["workdir"] == "/home/user"
 
 
 class TestSandboxEnv:

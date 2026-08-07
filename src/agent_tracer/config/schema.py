@@ -93,7 +93,7 @@ class MCPDiscoveryConfig(StrictModel):
 class EnvironmentConfig(StrictModel):
     # Not a Literal: a backend can be installed rather than merged, and the
     # registry raises with the available names if this is not one of them.
-    # Built in are local, docker and e2b.
+    # Built in are local and docker.
     type: str = "local"
     image: str | None = None
     working_dir: str = "/workspace"
@@ -110,7 +110,7 @@ class EnvironmentConfig(StrictModel):
 
     # Meaning the same thing across backends, expressed differently by each:
     # a sandbox that outlives its run, and something to attribute it to.
-    ttl: float | None = None  # seconds; E2B kills its own, others may label it
+    ttl: float | None = None  # seconds; a backend may enforce it or label and sweep
     labels: dict[str, str] = Field(default_factory=dict)
 
     # Anything a specific backend needs and no other does. What `attach()`
@@ -118,7 +118,7 @@ class EnvironmentConfig(StrictModel):
     options: dict[str, str] = Field(
         default_factory=dict,
         description=(
-            "Backend-specific extras passed to attach(), e.g. e2b's api_key. "
+            "Backend-specific extras passed to attach(), e.g. an API key or host alias. "
             "Values take an 'env:VAR_NAME' reference (recommended) or a literal."
         ),
     )
@@ -126,11 +126,11 @@ class EnvironmentConfig(StrictModel):
     def resolved_options(self) -> dict[str, str]:
         """`options` with its `env:` references resolved.
 
-        `e2b.attach` reads its API key out of here, so these get the same
-        discipline as `model.api_key` rather than being handed on untouched —
-        `api_key: env:E2B_API_KEY` passed the literal string to
-        `Sandbox.connect`, which left a plaintext key in the YAML as the only
-        thing that worked.
+        A backend reads its credentials out of here, so these get the same
+        discipline as `model.api_key` rather than being handed on untouched.
+        Written as `api_key: env:SANDBOX_KEY`, the literal string used to reach
+        the backend, which left a plaintext key in the YAML as the only thing
+        that worked.
         """
         return {
             key: resolve_env_ref(value, field=f"environment.options.{key}")

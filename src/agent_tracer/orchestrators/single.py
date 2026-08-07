@@ -53,7 +53,7 @@ def _describe_sandbox(config: RunConfig, provider: Any) -> dict[str, str]:
 
     return sandbox_env(
         env_type=config.environment.type,
-        # Resolved, not as written: `api_key: env:E2B_API_KEY` has to reach
+        # Resolved, not as written: `api_key: env:SANDBOX_API_KEY` has to reach
         # `attach()` as the key. Unresolvable already aborted at startup.
         options=config.environment.resolved_options(),
         **describe(config.environment, provider),

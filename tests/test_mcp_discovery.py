@@ -214,7 +214,7 @@ class TestStirrupMapping:
 
 
 class TestSandboxOptions:
-    """`environment.options` is where a backend's credentials go — `e2b.attach`
+    """`environment.options` is where a backend's credentials go — a backend
     takes its API key from it — so it reaches the servers that attach to the
     sandbox and no others. It was serialised into `AGENT_TRACER_OPTIONS` for
     every stdio server, including ones that never touch the sandbox and any
@@ -222,7 +222,7 @@ class TestSandboxOptions:
     """
 
     def _sandbox(self) -> dict[str, str]:
-        return sandbox_env(env_type="e2b", sandbox_id="sbx_1", options={"api_key": "secret"})
+        return sandbox_env(env_type="docker", sandbox_id="sbx_1", options={"api_key": "secret"})
 
     def test_a_server_that_does_not_attach_is_not_given_the_key(self, tmp_path):
         _server(tmp_path, "calculator")
@@ -244,7 +244,7 @@ class TestSandboxOptions:
             manifests, tmp_path, self._sandbox()
         ).mcp_servers["calculator"].env
 
-        assert env["AGENT_TRACER_ENV_TYPE"] == "e2b"
+        assert env["AGENT_TRACER_ENV_TYPE"] == "docker"
         assert env["AGENT_TRACER_SANDBOX_ID"] == "sbx_1"
 
     def test_a_server_that_attaches_says_so_and_gets_them(self, tmp_path):
@@ -258,7 +258,7 @@ class TestSandboxOptions:
         assert json.loads(env["AGENT_TRACER_OPTIONS"]) == {"api_key": "secret"}
 
     def test_the_packaged_servers_that_attach_declare_it(self):
-        """`from_env()` without options attaches to E2B with no API key."""
+        """`from_env()` without options attaches with no API key."""
         manifests = discover_mcp_servers(MCPDiscoveryConfig())
 
         attaching = {n for n, m in manifests.items() if m.sandbox_options}

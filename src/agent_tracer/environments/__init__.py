@@ -3,8 +3,8 @@
 Two questions, and they have different answers:
 
 **Building.** The orchestrator needs a `CodeExecToolProvider` for a task. Which
-one depends on `environment.type`. Backends ship here for local, Docker and
-E2B; anything else registers itself through the ``agent_tracer.environments``
+one depends on `environment.type`. Backends ship here for local and Docker;
+anything else registers itself through the ``agent_tracer.environments``
 entry point group, so a sandbox we do not distribute is installed rather than
 merged.
 
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 ENTRY_POINT_GROUP = "agent_tracer.environments"
 
 #: Backends that ship with the package. Anything else arrives by entry point.
-BUILTIN = ("local", "docker", "e2b")
+BUILTIN = ("local", "docker")
 
 
 @runtime_checkable

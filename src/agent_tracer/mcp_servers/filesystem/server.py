@@ -187,22 +187,43 @@ def list_directory(path: str = ".") -> dict:
     """
     target = _abs(path)
     quoted = shlex.quote(target)
+    # A filename is bytes, and `ls` writes it out as it is. The backends' `exec`
+    # decodes strictly, so one byte that is not UTF-8 anywhere in the directory
+    # killed the whole call; and splitting that output on newlines made `a\nb`
+    # — a legal name — into two entries. So names cross the way file content
+    # does: NUL-separated, base64'd, decoded here, where a byte that is not
+    # UTF-8 can be replaced in the one name that holds it.
+    #
+    # The glob is `ls -A`: everything except `.` and `..`. The existence test
+    # is what skips a pattern that matched nothing, and `-L` keeps a broken
+    # symlink, which is an entry of the directory like any other.
+    #
     # `ls` on a plain file lists that file, which came back as a directory
     # holding one entry whose name was the whole absolute path.
-    # `-p` appends `/` to directories, which is what distinguishes them here.
     rc, out, err = _run(
         f"if [ ! -e {quoted} ]; then echo 'no such directory' >&2; exit 21; fi; "
         f"if [ ! -d {quoted} ]; then echo 'not a directory' >&2; exit 22; fi; "
-        f"ls -Ap {quoted}"
+        f"cd {quoted} && for entry in * .[!.]* ..?*; do "
+        '[ -e "$entry" ] || [ -L "$entry" ] || continue; '
+        'if [ -d "$entry" ]; then printf \'d %s\\0\' "$entry"; '
+        'else printf \'f %s\\0\' "$entry"; fi; '
+        "done | base64 -w0"
     )
     if rc != 0:
         raise FileNotFoundError(f"Could not list {target}: {(err.strip() or out.strip())[:200]}")
 
-    entries = [
-        {"name": line.rstrip("/"), "type": "directory" if line.endswith("/") else "file"}
-        for line in out.splitlines()
-        if line
-    ]
+    entries = []
+    for record in base64.b64decode(out.strip()).split(b"\0"):
+        if not record:
+            continue
+        kind, _, name = record.partition(b" ")
+        entries.append(
+            {
+                "name": _decode(name),
+                "type": "directory" if kind == b"d" else "file",
+            }
+        )
+    entries.sort(key=lambda entry: entry["name"])
     return {"path": target, "entries": entries, "count": len(entries)}
 
 

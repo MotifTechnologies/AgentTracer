@@ -149,6 +149,24 @@ async def main() -> None:
         assert bad.is_error, bad.content[0].text
         print("list_directory on a file -> refused, and says which it was")
 
+        # A filename is bytes. `ls` writes it out as it is and `exec` decodes
+        # strictly, so one byte that is not UTF-8 anywhere in the directory
+        # killed the call with UnicodeDecodeError; and splitting that output on
+        # newlines turned `two\nlines.txt` — a legal name — into two entries.
+        odd = os.path.join(os.fsencode(workdir), b"odd")
+        os.mkdir(odd)
+        os.mkdir(os.path.join(odd, b"sub\xffdir"))
+        Path(os.fsdecode(os.path.join(odd, b"two\nlines.txt"))).write_bytes(b"x")
+        (workdir / "odd" / ".hidden").write_text("x", encoding="utf-8")
+
+        out = _payload(await session.call_tool("list_directory", {"path": "odd"}))
+        kinds = {e["name"]: e["type"] for e in out["entries"]}
+        assert out["count"] == 3, out
+        assert kinds["two\nlines.txt"] == "file", kinds
+        assert kinds[".hidden"] == "file", kinds
+        assert kinds["sub�dir"] == "directory", kinds
+        print("list_directory with a newline and a non-UTF-8 name -> three entries, not a crash")
+
         out = _payload(await session.call_tool("file_info", {"path": "note.txt"}))
         assert out["size_bytes"] > 0 and "file" in out["type"], out
         print("file_info -> ok")

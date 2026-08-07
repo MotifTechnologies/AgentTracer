@@ -41,12 +41,32 @@ def build(config: EnvironmentConfig, *, task_id: str | None = None) -> Any:
     )
 
 
+def _working_dir() -> str:
+    """The directory stirrup's E2B provider actually runs commands in.
+
+    Read from upstream so its value is not duplicated here; the literal is the
+    fallback for when the e2b extra is absent, where no sandbox exists to
+    describe in the first place.
+    """
+    try:
+        from stirrup.tools.code_backends.e2b import E2B_WORKING_DIR
+    except ImportError:
+        return "/home/user"
+    return E2B_WORKING_DIR
+
+
 def describe(config: EnvironmentConfig, provider: Any) -> dict[str, str | None]:
-    """No `host_dir`: the sandbox is remote and mounts nothing of ours."""
+    """No `host_dir`: the sandbox is remote and mounts nothing of ours.
+
+    `working_dir` is deliberately ignored, as it is for local: upstream's
+    provider takes no working directory, pins every command to its own root and
+    rejects paths outside it. That root is what a relative path has to resolve
+    against.
+    """
     sandbox = getattr(provider, "_sbx", None)
     return {
         "sandbox_id": getattr(sandbox, "sandbox_id", None) if sandbox else None,
-        "workdir": config.working_dir,
+        "workdir": _working_dir(),
         "host_dir": None,
         "user": config.user,
     }

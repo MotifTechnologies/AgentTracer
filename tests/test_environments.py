@@ -69,10 +69,23 @@ class TestDescribe:
 
     def test_e2b_mounts_nothing_of_ours(self):
         provider = SimpleNamespace(_sbx=SimpleNamespace(sandbox_id="sbx_1"))
-        out = describe(_cfg(type="e2b", working_dir="/home/user"), provider)
+        out = describe(_cfg(type="e2b"), provider)
 
         assert out["sandbox_id"] == "sbx_1"
         assert out["host_dir"] is None
+
+    def test_e2b_reports_the_root_stirrup_pins_it_to(self):
+        """Not `working_dir`, whose default is `/workspace`.
+
+        stirrup's E2B provider takes no working directory: it runs everything
+        under its own `E2B_WORKING_DIR` and rejects paths outside it. A server
+        resolving `data.csv` against the configured value would read
+        `/workspace/data.csv` while code_exec had written `/home/user/data.csv`.
+        """
+        provider = SimpleNamespace(_sbx=SimpleNamespace(sandbox_id="sbx_1"))
+        out = describe(_cfg(type="e2b", working_dir="/workspace"), provider)
+
+        assert out["workdir"] == "/home/user"
 
 
 class TestSandboxEnv:

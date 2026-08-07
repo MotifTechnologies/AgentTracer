@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -91,21 +91,57 @@ class MCPDiscoveryConfig(StrictModel):
 
 
 class EnvironmentConfig(StrictModel):
-    type: Literal["local", "docker"] = "local"
+    # Not a Literal: a backend can be installed rather than merged, and the
+    # registry raises with the available names if this is not one of them.
+    # Built in are local and docker.
+    type: str = "local"
     image: str | None = None
     working_dir: str = "/workspace"
+    user: str | None = None  # in-sandbox user, where the backend has one
     shell_timeout: int = 300
     env_vars: list[str] = Field(default_factory=list)
-    # Sandbox isolation (docker only). Defaults match the project security spec:
-    # no network, hard memory/pids caps, single temp-dir mount (stirrup default).
+    allowed_commands: list[str] = Field(default_factory=list)
+
+    # Isolation. Defaults match the project security spec: no network, hard
+    # memory/pids caps, single temp-dir mount where the backend mounts at all.
     network_isolation: bool = True
     mem_limit: str | None = "2g"
     pids_limit: int | None = 256
 
+    # Meaning the same thing across backends, expressed differently by each:
+    # a sandbox that outlives its run, and something to attribute it to.
+    ttl: float | None = None  # seconds; a backend may enforce it or label and sweep
+    labels: dict[str, str] = Field(default_factory=dict)
+
+    # Anything a specific backend needs and no other does. What `attach()`
+    # takes, so this is where a backend's credentials go — see resolved_options.
+    options: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Backend-specific extras passed to attach(), e.g. an API key or host alias. "
+            "Values take an 'env:VAR_NAME' reference (recommended) or a literal."
+        ),
+    )
+
+    def resolved_options(self) -> dict[str, str]:
+        """`options` with its `env:` references resolved.
+
+        A backend reads its credentials out of here, so these get the same
+        discipline as `model.api_key` rather than being handed on untouched.
+        Written as `api_key: env:SANDBOX_KEY`, the literal string used to reach
+        the backend, which left a plaintext key in the YAML as the only thing
+        that worked.
+        """
+        return {
+            key: resolve_env_ref(value, field=f"environment.options.{key}")
+            for key, value in self.options.items()
+        }
+
     @model_validator(mode="after")
-    def _docker_needs_image(self) -> EnvironmentConfig:
-        if self.type == "docker" and not self.image:
-            raise ConfigError("environment: docker type requires 'image'")
+    def _image_is_required(self) -> EnvironmentConfig:
+        # `local` runs on this machine and has nothing to pull.
+        if self.type != "local" and not self.image:
+            raise ConfigError(f"environment: {self.type} type requires 'image'")
         return self
 
 
@@ -175,3 +211,12 @@ class RunConfig(StrictModel):
         self.model.resolved_api_key()
         if not self.model.reasoning_key:
             raise ConfigError("model.reasoning_key: required — refusing to run")
+        # `environment.type` is a str, so the registry is the only thing that
+        # knows whether it names a backend. Left to `build_provider`, the first
+        # check happens per task inside `Runner._run_one`'s `except Exception`,
+        # and a typo becomes three retries and an error trajectory for every
+        # task in the dataset rather than a config the run refuses to start on.
+        from agent_tracer.environments import ensure_installed
+
+        ensure_installed(self.environment.type)
+        self.environment.resolved_options()

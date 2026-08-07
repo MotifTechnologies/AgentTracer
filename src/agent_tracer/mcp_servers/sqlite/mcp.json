@@ -1,0 +1,20 @@
+{
+  "$schema": "../mcp.schema.json",
+  "manifest_version": 1,
+  "name": "sqlite",
+  "description": "Query and modify a SQLite database in the task's sandbox, so tabular work is a checkable query rather than mental arithmetic.",
+  "version": "0.1.0",
+  "transport": "stdio",
+  "command": "uv",
+  "args": ["run", "--quiet", "server.py"],
+  "env": {},
+  "sandbox_options": true,
+  "startup_timeout_s": 15,
+  "call_timeout_s": 90,
+  "tools": [
+    {"name": "query", "description": "Run a read query and return the rows."},
+    {"name": "execute", "description": "Run a statement that changes the database, and commit it."},
+    {"name": "list_tables", "description": "List the tables and views in a database."},
+    {"name": "describe_table", "description": "Show a table's columns, types and primary key."}
+  ]
+}

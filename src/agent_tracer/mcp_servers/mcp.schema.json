@@ -4,9 +4,18 @@
   "title": "agent-tracer MCP server manifest (MCP/<name>/mcp.json)",
   "description": "Declares how the agent-tracer runner discovers and launches an MCP server placed under the MCP/ directory. One subdirectory = one server. Servers are auto-registered by default (default all); YAML config may narrow the set via mcp.include / mcp.exclude.",
   "type": "object",
-  "required": ["manifest_version", "name", "description", "transport"],
+  "required": [
+    "manifest_version",
+    "name",
+    "description",
+    "transport"
+  ],
   "additionalProperties": false,
   "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "This schema, so an editor can complete and check the manifest as it is written. Every packaged manifest opens with \"../mcp.schema.json\"; declared here because additionalProperties is false and a manifest that names its schema must still validate against it."
+    },
     "manifest_version": {
       "const": 1,
       "description": "Manifest schema version. Bump only with a coordinated runner change."
@@ -25,7 +34,10 @@
       "description": "Server implementation version (semver recommended). Recorded in trajectory metadata for reproducibility."
     },
     "transport": {
-      "enum": ["stdio", "http"],
+      "enum": [
+        "stdio",
+        "http"
+      ],
       "description": "How the runner connects. stdio: runner spawns `command` and speaks MCP over stdin/stdout. http: runner connects to a streamable-HTTP endpoint at `url` (server lifecycle is external)."
     },
     "command": {
@@ -34,7 +46,9 @@
     },
     "args": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "default": [],
       "description": "Arguments for command (stdio only). Relative paths are resolved against this manifest's directory."
     },
@@ -45,31 +59,53 @@
     },
     "env": {
       "type": "object",
-      "additionalProperties": { "type": "string" },
+      "additionalProperties": {
+        "type": "string"
+      },
       "default": {},
-      "description": "Environment variables passed to the spawned process. Values support env: references (e.g. \"env:SEARCH_API_KEY\") resolved from the runner's .env/environment — never store secrets literally. Unresolvable env: references abort the run (fail-fast), consistent with api_key/reasoning_key handling."
+      "description": "Environment variables passed to the spawned process. A value of the form \"env:VAR_NAME\" (e.g. \"env:SEARCH_API_KEY\") is resolved from the runner's .env/environment at startup, and an unresolvable one aborts the run (fail-fast, consistent with api_key/reasoning_key). Any other value is passed on exactly as written — correct for a setting, never for a secret: a key written here is a key published with the repository."
+    },
+    "headers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "description": "HTTP headers sent with every request (http only). Same rule as env: \"env:VAR_NAME\" (e.g. \"env:CONTEXT7_API_KEY\") is resolved at startup and an unresolvable one aborts the run; anything else is sent exactly as written — correct for Accept, never for a key. Omit the property entirely on a stdio server; declaring it, even empty, is refused."
+    },
+    "sandbox_options": {
+      "type": "boolean",
+      "default": false,
+      "description": "This server attaches to the task's sandbox and needs environment.options to do it (stdio only). Those options are where a backend's credentials go, so AGENT_TRACER_OPTIONS is sent only to servers that declare this. The rest of the sandbox description (AGENT_TRACER_ENV_TYPE, _SANDBOX_ID, _WORKDIR, _HOST_DIR, _USER) goes to every server."
     },
     "startup_timeout_s": {
       "type": "number",
       "exclusiveMinimum": 0,
       "default": 15,
-      "description": "Max seconds to wait for the server to complete the MCP initialize handshake before the run is aborted."
+      "description": "Max seconds to wait for the server to complete the MCP initialize handshake. The client connects every selected server in one sequential pass, so what is enforced is the sum of the selected manifests' values; exceeding it aborts the attempt rather than waiting for the runner's task timeout. A server's first `uv run` builds its environment and can exceed this on a cold cache."
     },
     "call_timeout_s": {
       "type": "number",
       "exclusiveMinimum": 0,
       "default": 60,
-      "description": "Default per-tool-call timeout in seconds. A timed-out call is recorded as a tool_result error event; the agent loop continues."
+      "description": "Per-tool-call timeout in seconds, enforced on both transports. A call that exceeds it is cancelled and comes back to the model as a timeout result, so the agent loop continues rather than losing the trajectory."
     },
     "tools": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "description"],
+        "required": [
+          "name",
+          "description"
+        ],
         "additionalProperties": false,
         "properties": {
-          "name": { "type": "string" },
-          "description": { "type": "string" }
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
         }
       },
       "description": "Optional declared tool list, for documentation and contract tests. The authoritative list always comes from MCP tool discovery at runtime; contract tests warn when the two diverge."
@@ -77,12 +113,48 @@
   },
   "allOf": [
     {
-      "if": { "properties": { "transport": { "const": "stdio" } } },
-      "then": { "required": ["command"] }
+      "if": {
+        "properties": {
+          "transport": {
+            "const": "stdio"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "command"
+        ]
+      }
     },
     {
-      "if": { "properties": { "transport": { "const": "http" } } },
-      "then": { "required": ["url"] }
+      "if": {
+        "properties": {
+          "transport": {
+            "const": "http"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "transport": {
+            "const": "stdio"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "headers"
+          ]
+        }
+      }
     }
   ]
 }

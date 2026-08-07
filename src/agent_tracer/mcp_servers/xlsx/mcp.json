@@ -1,0 +1,19 @@
+{
+  "$schema": "../mcp.schema.json",
+  "manifest_version": 1,
+  "name": "xlsx",
+  "description": "Read and edit .xlsx workbooks in the task's sandbox — sheets, cell ranges with both formulas and values, search, and targeted cell writes.",
+  "version": "0.1.0",
+  "transport": "stdio",
+  "command": "uv",
+  "args": ["run", "--quiet", "server.py"],
+  "env": {},
+  "startup_timeout_s": 25,
+  "call_timeout_s": 180,
+  "tools": [
+    {"name": "list_sheets", "description": "List a workbook's sheets, with the extent of each."},
+    {"name": "read_range", "description": "Read cells, with both their formulas and their computed values."},
+    {"name": "find_cells", "description": "Find cells whose value or formula contains a string."},
+    {"name": "write_cells", "description": "Set specific cells in an existing workbook, leaving the rest alone."}
+  ]
+}

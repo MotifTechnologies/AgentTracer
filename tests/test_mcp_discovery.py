@@ -1,10 +1,19 @@
 import json
+import os
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
+import agent_tracer
 from agent_tracer.config.schema import ConfigError, MCPDiscoveryConfig
-from agent_tracer.mcp.discovery import build_stirrup_mcp_config, discover_mcp_servers
+from agent_tracer.mcp.discovery import (
+    build_stirrup_mcp_config,
+    discover_mcp_servers,
+    sandbox_env,
+)
 
 
 def _server(root: Path, name: str, **overrides) -> Path:
@@ -84,6 +93,92 @@ class TestDiscovery:
         assert "echo" in manifests
 
 
+class TestPackagedManifests:
+    def test_every_manifest_validates_against_the_schema_it_names(self):
+        """The loader aliases `$schema` away before pydantic sees it, so a
+        manifest that no validator would accept still ran. Every packaged
+        manifest opens with the key, and the schema forbids what it does not
+        declare — `'$schema' was unexpected` for all six."""
+        import jsonschema  # a dependency of `mcp`, which the runner requires
+
+        root = Path(agent_tracer.__file__).parent / "mcp_servers"
+        validator = jsonschema.Draft202012Validator(
+            json.loads((root / "mcp.schema.json").read_text("utf-8"))
+        )
+
+        for path in sorted(root.glob("*/mcp.json")):
+            errors = [e.message for e in validator.iter_errors(json.loads(path.read_text("utf-8")))]
+            assert not errors, f"{path}: {errors}"
+
+
+class TestPackagePath:
+    """What every stdio server is handed as PYTHONPATH.
+
+    A server runs under its own `uv run` and declares `mcp>=2.0,<3`; the runner
+    pins `mcp>=1.2,<2`. `uv run` inherits PYTHONPATH and places it ahead of the
+    venv it builds for the script, so whatever is injected here shadows the
+    server's own dependencies with the runner's. In this checkout the package's
+    parent is `src/`, which holds nothing else and hides that entirely. Once the
+    package is installed as a wheel it is site-packages, and every server dies
+    on `from mcp.server import MCPServer` — with pydantic, httpx and anyio
+    silently downgraded on the way.
+    """
+
+    def _installed(self, tmp_path: Path) -> Path:
+        """A site-packages: this package, and the neighbours it lives among."""
+        site_packages = tmp_path / "site-packages"
+        package = Path(agent_tracer.__file__).resolve().parent
+        shutil.copytree(package, site_packages / package.name)
+        # `mcp` is the one that matters: the runner's is a major version below
+        # what every server declares. It is empty here so that shadowing it in
+        # this process is harmless — in a server it is fatal.
+        for neighbour in ("mcp", "httpx"):
+            (site_packages / neighbour).mkdir(parents=True)
+            (site_packages / neighbour / "__init__.py").write_text("")
+        return site_packages
+
+    def _in(self, site_packages: Path, script: str) -> str:
+        done = subprocess.run(
+            [sys.executable, "-c", script],
+            env={**os.environ, "PYTHONPATH": str(site_packages)},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert done.returncode == 0, done.stderr
+        return done.stdout.strip()
+
+    def test_the_injected_directory_holds_agent_tracer_and_nothing_else(self, tmp_path):
+        site_packages = self._installed(tmp_path)
+
+        # Checked in the subprocess: the directory is this run's and is gone
+        # once the runner that made it exits.
+        listing = self._in(
+            site_packages,
+            "from pathlib import Path;"
+            "from agent_tracer.mcp.discovery import _package_path;"
+            "print(sorted(p.name for p in Path(_package_path()).iterdir()))",
+        )
+
+        assert listing == "['agent_tracer']"
+
+    def test_the_package_is_importable_from_it(self, tmp_path):
+        """Which is the whole reason it is injected: `environments.from_env()`
+        is the first line of every sandbox-bound server."""
+        site_packages = self._installed(tmp_path)
+
+        found = self._in(
+            site_packages,
+            "import subprocess, sys, os;"
+            "from agent_tracer.mcp.discovery import _package_path;"
+            "print(subprocess.run([sys.executable, '-c', 'import agent_tracer'],"
+            " env={'PATH': os.environ['PATH'], 'PYTHONPATH': _package_path()},"
+            " capture_output=True).returncode)",
+        )
+
+        assert found == "0"
+
+
 class TestStirrupMapping:
     def test_stdio_maps_with_cwd(self, tmp_path):
         _server(tmp_path, "alpha")
@@ -92,3 +187,132 @@ class TestStirrupMapping:
         server = mcp_config.mcp_servers["alpha"]
         assert server.command == "uv"
         assert server.cwd == str((tmp_path / "alpha").resolve())
+
+    def test_a_manifest_adds_to_pythonpath_rather_than_replacing_it(self, tmp_path):
+        """The package path is what lets a spawned server import the package it
+        was spawned by — `environments.from_env()` is the first line of every
+        sandbox-bound server. A manifest naming its own PYTHONPATH took that
+        away entirely, and the server could not start."""
+        _server(tmp_path, "alpha", env={"PYTHONPATH": "/opt/vendor/lib"})
+        manifests = discover_mcp_servers(_cfg(tmp_path))
+
+        env = build_stirrup_mcp_config(manifests, tmp_path).mcp_servers["alpha"].env
+
+        entries = env["PYTHONPATH"].split(os.pathsep)
+        assert "/opt/vendor/lib" in entries, env
+        assert [p.name for p in Path(entries[0]).iterdir()] == ["agent_tracer"], env
+
+    def test_the_sandbox_description_is_still_a_manifest_s_to_override(self, tmp_path):
+        _server(tmp_path, "alpha", env={"AGENT_TRACER_ENV_TYPE": "local"})
+        manifests = discover_mcp_servers(_cfg(tmp_path))
+
+        env = build_stirrup_mcp_config(
+            manifests, tmp_path, {"AGENT_TRACER_ENV_TYPE": "docker"}
+        ).mcp_servers["alpha"].env
+
+        assert env["AGENT_TRACER_ENV_TYPE"] == "local"
+
+
+class TestSandboxOptions:
+    """`environment.options` is where a backend's credentials go — a backend
+    takes its API key from it — so it reaches the servers that attach to the
+    sandbox and no others. It was serialised into `AGENT_TRACER_OPTIONS` for
+    every stdio server, including ones that never touch the sandbox and any
+    third-party server dropped into the discovery directory later.
+    """
+
+    def _sandbox(self) -> dict[str, str]:
+        return sandbox_env(env_type="docker", sandbox_id="sbx_1", options={"api_key": "secret"})
+
+    def test_a_server_that_does_not_attach_is_not_given_the_key(self, tmp_path):
+        _server(tmp_path, "calculator")
+        manifests = discover_mcp_servers(_cfg(tmp_path))
+
+        env = build_stirrup_mcp_config(
+            manifests, tmp_path, self._sandbox()
+        ).mcp_servers["calculator"].env
+
+        assert "AGENT_TRACER_OPTIONS" not in env, env
+
+    def test_the_rest_of_the_description_still_reaches_it(self, tmp_path):
+        """Only the options are held back — a server can still rely on the
+        others being there."""
+        _server(tmp_path, "calculator")
+        manifests = discover_mcp_servers(_cfg(tmp_path))
+
+        env = build_stirrup_mcp_config(
+            manifests, tmp_path, self._sandbox()
+        ).mcp_servers["calculator"].env
+
+        assert env["AGENT_TRACER_ENV_TYPE"] == "docker"
+        assert env["AGENT_TRACER_SANDBOX_ID"] == "sbx_1"
+
+    def test_a_server_that_attaches_says_so_and_gets_them(self, tmp_path):
+        _server(tmp_path, "filesystem", sandbox_options=True)
+        manifests = discover_mcp_servers(_cfg(tmp_path))
+
+        env = build_stirrup_mcp_config(
+            manifests, tmp_path, self._sandbox()
+        ).mcp_servers["filesystem"].env
+
+        assert json.loads(env["AGENT_TRACER_OPTIONS"]) == {"api_key": "secret"}
+
+    def test_the_packaged_servers_that_attach_declare_it(self):
+        """`from_env()` without options attaches with no API key."""
+        manifests = discover_mcp_servers(MCPDiscoveryConfig())
+
+        attaching = {n for n, m in manifests.items() if m.sandbox_options}
+        assert attaching == {"filesystem", "sqlite", "soffice"}, attaching
+
+
+class TestHttpServers:
+    """`headers` is where a hosted server's API key goes, so it gets the same
+    `env:` discipline as `env` — a key written into a manifest is a key
+    published with the repository."""
+
+    def test_env_refs_in_headers_are_resolved(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TEST_DOCS_KEY", "secret-value")
+        _server(tmp_path, "docs", transport="http", url="https://example.test/mcp",
+                headers={"Authorization": "env:TEST_DOCS_KEY", "X-Fixed": "literal"},
+                command=None, args=[])
+        manifests = discover_mcp_servers(_cfg(tmp_path))
+
+        cfg = build_stirrup_mcp_config(manifests, tmp_path)
+
+        headers = cfg.mcp_servers["docs"].headers
+        assert headers == {"Authorization": "secret-value", "X-Fixed": "literal"}
+
+    def test_an_unset_ref_refuses_the_run_before_a_task_starts(self, tmp_path, monkeypatch):
+        """`env` was resolved in the startup loop and `headers` only in the
+        per-task rebuild, so an unresolvable header secret came back as one
+        task's swallowed error — retried, recorded, and repeated for every task
+        — instead of a run that refuses to start."""
+        monkeypatch.delenv("TEST_MISSING_KEY", raising=False)
+        _server(tmp_path, "docs", transport="http", url="https://example.test/mcp",
+                headers={"Authorization": "env:TEST_MISSING_KEY"}, command=None, args=[])
+
+        with pytest.raises(ConfigError, match="TEST_MISSING_KEY"):
+            discover_mcp_servers(_cfg(tmp_path))
+
+    def test_headers_are_rejected_on_stdio(self, tmp_path):
+        """They would be silently ignored otherwise."""
+        _server(tmp_path, "local", headers={"Authorization": "x"})
+
+        with pytest.raises(ConfigError, match="http transport only"):
+            discover_mcp_servers(_cfg(tmp_path))
+
+    def test_an_empty_headers_on_stdio_is_rejected_too(self, tmp_path):
+        """The schema forbids the key on stdio whether or not it holds
+        anything; the loader looked only at the contents, so a manifest no
+        validator would accept still ran."""
+        _server(tmp_path, "local", headers={})
+
+        with pytest.raises(ConfigError, match="http transport only"):
+            discover_mcp_servers(_cfg(tmp_path))
+
+    def test_call_timeout_carries_to_the_http_client(self, tmp_path):
+        _server(tmp_path, "docs", transport="http", url="https://example.test/mcp",
+                call_timeout_s=42, command=None, args=[])
+        manifests = discover_mcp_servers(_cfg(tmp_path))
+
+        assert build_stirrup_mcp_config(manifests, tmp_path).mcp_servers["docs"].timeout == 42

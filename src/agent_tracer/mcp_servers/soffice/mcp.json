@@ -1,0 +1,28 @@
+{
+  "$schema": "../mcp.schema.json",
+  "manifest_version": 1,
+  "name": "soffice",
+  "description": "Convert documents between office formats and extract their text, using LibreOffice inside the task's sandbox.",
+  "version": "0.1.0",
+  "transport": "stdio",
+  "command": "uv",
+  "args": ["run", "--quiet", "server.py"],
+  "env": {},
+  "sandbox_options": true,
+  "startup_timeout_s": 15,
+  "call_timeout_s": 180,
+  "tools": [
+    {
+      "name": "convert_document",
+      "description": "Convert a document to another office format (pdf, docx, xlsx, csv, ...)."
+    },
+    {
+      "name": "extract_text",
+      "description": "Extract plain UTF-8 text from a document."
+    },
+    {
+      "name": "list_supported_formats",
+      "description": "List the target formats convert_document accepts."
+    }
+  ]
+}

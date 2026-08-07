@@ -21,12 +21,88 @@ src/agent_tracer/mcp_servers/
 ├── echo/              # 예제 서버 (계약 레퍼런스)
 │   ├── mcp.json
 │   └── server.py
-├── calculator/        # (예정) 조기훈 님
-└── soffice/           # (예정) 조기훈 님
+├── calculator/        # 정확 연산
+├── time/              # 현재 시각 · 타임존 변환
+├── filesystem/        # 파일 읽기·쓰기·편집·검색      [샌드박스]
+├── sqlite/            # SQLite 쿼리·수정              [샌드박스]
+├── soffice/           # 문서 변환 (LibreOffice)       [샌드박스]
+├── pdf/               # PDF 텍스트·표 추출            [샌드박스]
+├── xlsx/              # 워크북 읽기·셀 편집           [샌드박스]
+└── context7/          # 라이브러리 문서 조회          [외부 HTTP]
+
+각 폴더는 mcp.json · server.py · smoke_test.py 로 동일하다.
+단 `[외부 HTTP]`는 server.py가 없다 — 우리가 띄우는 게 아니다.
 ```
 
-> search는 MCP가 아니라 stirrup 내장 web 툴(web_fetch/web_search)을 사용한다
-> (config `tools.web: true`, web_search는 `BRAVE_API_KEY` 필요).
+`[샌드박스]` 표시가 있는 서버는 에이전트 파일을 다루므로 아래 "샌드박스를 다루는
+서버" 계약을 따른다. 나머지는 샌드박스 환경변수를 무시한다.
+
+`[외부 HTTP]`는 `transport: http`로 남의 엔드포인트를 가리킨다. spawn하는 프로세스가
+없으니 샌드박스 환경변수도 무관하고, 대신 **네트워크와 그쪽 가용성에 의존**한다.
+스모크 테스트가 실패하면 먼저 그쪽을 의심해야 하므로 실패 메시지가 그렇게 말한다.
+
+각 서버의 계약은 스모크 테스트가 실제 서버를 띄워(또는 접속해) 검증한다. 러너 없이
+단독 실행된다:
+
+```bash
+cd src/agent_tracer/mcp_servers/<서버> && uv run smoke_test.py
+```
+
+> 범용 search·fetch는 MCP가 아니라 stirrup 내장 web 툴(web_fetch/web_search)을 쓴다
+> (config `tools.web: true`, web_search는 `BRAVE_API_KEY` 필요). 같은 걸 MCP로
+> 또 붙이면 모델에게 중복된 툴이 두 벌 보인다. `context7`은 임의 URL이 아니라 특정
+> 라이브러리 문서를 정리해서 주는 거라 별개로 둔다 — 겹치는 부분이 있으니, 실제
+> 궤적에서 둘 다 쓰이는지는 보고 판단할 것.
+
+### 왜 이 서버들인가
+
+`code_exec`으로 다 되는데도 툴로 두는 이유는 **궤적에 무엇이 남는가**다.
+`cat -n f | sed -n '20,40p'`는 모델의 셸 숙련도를 기록하고,
+`read_file(path=..., offset=20)`은 수행한 단계를 기록한다. 학습 데이터로 쓸 거면
+후자가 쓸모 있고, 왕복 비용은 같다.
+
+- `filesystem` — `edit_file`은 셸에 마땅한 대응물이 없다. `sed -i`를 한 번에
+  맞히는 건 태스크와 무관한 기술이고, 틀리면 파일이 조용히 깨진다. 여기서는
+  정확히 한 번 매칭되지 않으면 개수와 함께 거부한다.
+- `sqlite` — 합계·조인을 모델이 암산하면 자신 있게 틀린다. 쿼리는 검증 가능하다.
+  샌드박스에 `sqlite3` CLI는 대개 없으므로 `python3`(표준 라이브러리 sqlite3)로
+  실행한다.
+- `time` — 모델에겐 시계가 없다. 기억한 오프셋은 DST 경계·인도(+05:30) 같은
+  반시간 오프셋에서 틀리고, 그게 보통 태스크가 노리는 지점이다.
+- `pdf` — `soffice`는 PDF로 *내보내는* 건 잘하고 *읽는* 건 못 한다(LibreOffice가
+  PDF를 그림으로 열어서 텍스트가 흐트러지거나 아예 안 나온다). 추출은 다른 일이다.
+  표는 `extract_text`로 뽑으면 열이 붙어버려서 숫자를 오독하게 되므로 셀로 분리해
+  준다. 텍스트가 없는 페이지는 빈 문자열이 아니라 **"스캔본으로 보인다"고 말한다** —
+  모델이 "빈 문서"로 결론내는 걸 막는다. 이건 **페이지 단위**다. 전 페이지가 비었을
+  때만 알리면, 도장 하나 찍힌 페이지가 섞인 50쪽 스캔본은 아무 말 없이 지나간다.
+  네 툴 모두 한 번에 50쪽까지만 본다 — `search_text`도 포함이다. 안 맞는 패턴 하나가
+  3,000쪽을 다 뽑으면 `call_timeout_s`(180s)를 넘기고, stdio 서버는 단일 스레드라
+  그동안 다른 호출도 같이 막힌다.
+- `xlsx` — `soffice`로 CSV 변환하면 시트·수식·셀 주소가 다 날아간다. 스프레드시트
+  질문은 보통 그것들에 대한 질문이다. 함정 두 개를 설계로 막았다:
+  **(1) 수식의 값은 파일에 없다.** openpyxl은 수식이나 캐시된 값 중 하나만 읽는데,
+  스크립트로 만들고 Excel로 연 적 없는 파일은 캐시가 비어 있다. 값을 요청하면 계산
+  셀이 전부 `None`으로 와서 "빈 칸"으로 읽힌다. 그래서 **둘 다 읽어 함께 돌려주고**,
+  캐시 없는 수식은 따로 알린다. **(2) 왕복이 손실적이다.** openpyxl은 저장할 때 파일을
+  다시 만들어서 차트·이미지·도형·피벗·.xlsm 매크로·시트 `extLst`(스파크라인, x14 데이터
+  유효성)가 사라진다. 대부분은 openpyxl 객체 모델에 아예 안 올라오므로 **파일의 파트를
+  직접 보고 판단해서 쓰기를 거부한다.** 셀 주석은 살아남으므로 거부하지 않는다. 거부할 수
+  없는 손실이 하나 있다 — 저장하면 워크북 전체의 **수식 캐시 값이 지워진다.** 그건
+  응답으로 알린다.
+- `read_range`는 셀을 **읽기 전에** 창을 정한다. openpyxl은 read-only가 아니면 used
+  range의 모든 좌표에 Cell을 만들어서, A1과 CZ200000만 든 4.8 KB 파일이 수 GB가 된다.
+  서버는 샌드박스 밖(cgroup 제한 없음)에서 돌기 때문에 그게 러너 호스트를 잡는다.
+- `context7` — 모델의 라이브러리 API 지식은 학습 시점에 묶여 있고, 낡은 시그니처를
+  자신 있게 쓴다. `time`이 시계를 주는 것과 같은 종류의 결핍 보충이다.
+  `resolve-library-id` → `query-docs` 2단계이고, 툴 이름이 하이픈인 건 우리가 정한
+  게 아니라 그쪽 스펙이다.
+
+**git 서버는 일부러 없다.** 기준을 뒤집으면 이유가 나온다 — 래퍼의 가치는 모델이
+그 CLI에 얼마나 서툰지에 비례하는데, git CLI는 모델이 가장 유창한 축이다. 게다가
+쓰기(commit·checkout·reset)를 열면 태스크 도중 작업 트리가 날아갈 경로가 생기고,
+읽기만 열면 어차피 커밋하러 셸에 들어간 모델이 조회도 거기서 끝낸다. 실제로 그랬다:
+읽기 전용 git 서버를 붙여 돌려봤을 때 모델은 `git__log` 대신
+`git rev-list --count`를 셸로 실행했다. 양쪽 다 값을 못 하므로 `code_exec`에 맡긴다.
 
 ## YAML에서 포함 서버 제어
 
@@ -35,11 +111,85 @@ src/agent_tracer/mcp_servers/
 ```yaml
 mcp:
   # discovery_dir: 미지정 시 패키지 내장 mcp_servers/ 사용
-  include: ["search", "soffice"] # 이 서버들만 등록
-  # exclude: ["calculator"]      # 또는 제외 방식 (include와 동시 사용 불가)
+  include: ["filesystem", "soffice"] # 이 서버들만 등록
+  # exclude: ["echo"]                # 또는 제외 방식 (include와 동시 사용 불가)
 ```
 
 등록 결과(서버·툴 목록, 버전)는 궤적 metadata에 기록된다.
+
+## 샌드박스를 다루는 서버
+
+에이전트 파일을 건드리는 서버는 **어느 샌드박스가 이번 태스크 것인지** 알아야 한다.
+매니페스트는 러너 기동 시 한 번 읽히고 샌드박스는 태스크마다 새로 만들어지므로,
+그 값을 매니페스트에 적어둘 방법은 없다 — 아직 존재하지 않는 값이다.
+
+그래서 러너가 **spawn하는 모든 stdio 서버의 환경변수**로 넘긴다
+(구현: [`mcp/discovery.py`](../mcp/discovery.py)의 `sandbox_env`). 백엔드에 중립적인
+용어만 쓴다:
+
+| 변수 | 의미 |
+|---|---|
+| `AGENT_TRACER_ENV_TYPE` | 샌드박스를 만든 `environment.type` |
+| `AGENT_TRACER_SANDBOX_ID` | `environments.attach()`에 넘길 값 (local이면 없음) |
+| `AGENT_TRACER_WORKDIR` | 샌드박스 안 에이전트 작업 디렉토리 |
+| `AGENT_TRACER_HOST_DIR` | 샌드박스가 마운트한 호스트 경로 (마운트하는 백엔드만) |
+| `AGENT_TRACER_USER` | 샌드박스 안 사용자 (있는 백엔드만) |
+| `AGENT_TRACER_OPTIONS` | JSON — 백엔드별 추가 값, `attach()`에 그대로 전달. **`sandbox_options: true`를 선언한 매니페스트에만** |
+
+`OPTIONS`를 뺀 나머지는 매니페스트별 opt-in이 아니라 **전부에 항상 세팅**되므로 새
+서버는 존재를 전제해도 된다. 빈 값은 `""`가 아니라 아예 빠지니 **존재 여부**로
+판단하면 된다. 매니페스트 `env`가 마지막에 병합되므로 필요하면 덮어쓸 수 있다.
+
+`OPTIONS`만 예외인 이유는 거기가 백엔드 크리덴셜이 들어가는 자리이기 때문이다 —
+백엔드는 여기서 자격증명을 꺼낸다. 계산만 하는 서버나 나중에 추가된 서드파티
+서버에 키가 갈 이유가 없으므로 샌드박스에 붙는 서버가 매니페스트에 직접 선언한다.
+`environment.options` 값은 `env:VAR_NAME` 참조를 지원하며 기동 시 해석된다 —
+해석 실패는 실행 거부다.
+
+읽는 쪽은 `environments.from_env()` 한 줄이면 된다 — 위 변수들을 해석해서
+`(access, workdir)`을 돌려준다. **백엔드로 분기하지 말 것.** 그래야 플러그인으로
+설치된 샌드박스가 서버 수정 없이 그대로 동작한다.
+
+```python
+from agent_tracer.environments import from_env, resolve
+
+access, workdir = from_env()
+rc, out, err = access.exec(f"wc -l {resolve('data.csv', workdir)}")
+```
+
+`access`가 제공하는 건 `exec(command, timeout_s)` 하나뿐이다
+([`environments/__init__.py`](../environments/__init__.py)의 `SandboxAccess`).
+파일 API도 수명주기도 없다 — 문서를 변환하는 서버에 필요한 건 명령 하나다.
+
+**바이트가 필요하면 `read_bytes` / `write_bytes`를 쓴다.** exec만 있는 통로로
+base64를 태워 보내는 게 전부지만, 셋이 같은 걸 필요로 해서 한군데로 모았다.
+
+```python
+from agent_tracer.environments import from_env, read_bytes, resolve
+
+access, workdir = from_env()
+raw = read_bytes(access, resolve("report.pdf", workdir))   # 정확한 바이트
+```
+
+`pdf`·`xlsx`가 이 위에 있다 — **샌드박스에서 바이트만 꺼내 서버 프로세스에서
+파싱한다.** pypdf·openpyxl을 샌드박스 이미지에 요구하지 않아도 되고(각자 PEP 723
+헤더에 선언), 이미지마다 다르게 실패하지도 않는다. 쓰기는 1 MiB, 읽기는 32 MiB에서
+막고 그 이상은 `code_exec`으로 넘긴다.
+
+바이트가 실제로 지나가는 통로라서 두 가지를 강제한다. **읽기는 돌아온 걸 검사한다** —
+`docker exec`는 로그인 셸이라 MOTD·conda 배너가 같은 stdout에 섞이고, base64는 기본값이
+알파벳 밖 문자를 *조용히 버려서* 몇 바이트 틀린 파일이 돌아온다. `validate=True`에 더해
+디코드 길이를 `stat` 크기와 대조한다. **쓰기는 나눠 보내고 원자적으로 덮는다** — argv
+하나의 상한은 ARG_MAX(2 MiB)가 아니라 MAX_ARG_STRLEN(128 KiB)이고 스크립트 전체가 인자
+하나라, 실제 한계는 98,244 바이트였다. 이제 조각내서 보내고 옆에 임시 파일로 쌓았다가
+`mv`로 덮는다 — 중간에 죽어도 원본이 잘려 있지 않다.
+
+이 서버들은 `attach()`를 쓰려고 `agent_tracer`를 import하는데, 각자 별도 `uv run`이라
+러너의 인터프리터를 물려받지 않는다. 그래서 러너가 `PYTHONPATH`도 같이 넘긴다 —
+PEP 723 헤더에는 그 서버가 실제로 쓰는 의존성만 적으면 된다.
+
+`soffice/`가 이 패턴의 레퍼런스이고, `calculator/`는 샌드박스를 아예 쓰지 않는 쪽의
+레퍼런스다.
 
 ## 매니페스트 작성 규칙 요약
 
@@ -51,9 +201,11 @@ mcp:
 | `transport` | ✅ | `stdio` \| `http` |
 | `command` / `args` | stdio 시 | 러너가 spawn할 명령. 상대 경로는 매니페스트 폴더 기준 |
 | `url` | http 시 | streamable-HTTP 엔드포인트 (서버 수명주기는 외부 관리) |
-| `env` | | spawn 환경변수. 시크릿은 반드시 `"env:VAR_NAME"` 참조로 — 원문 저장 금지, 미해석 시 실행 거부 |
-| `startup_timeout_s` | | initialize 핸드셰이크 대기 상한 (기본 15초) |
-| `call_timeout_s` | | 툴 호출 기본 타임아웃 (기본 60초) |
+| `env` | | spawn 환경변수(stdio). 시크릿은 반드시 `"env:VAR_NAME"` 참조로 — 원문 저장 금지, 미해석 시 실행 거부 |
+| `headers` | | 매 요청에 붙는 HTTP 헤더(http 전용). `env` 와 같은 규율 — `env:` 참조는 기동 시 해석되고 실패하면 실행 거부, 그 외 값은 적은 그대로 전송. API 키를 매니페스트에 적으면 repo에 키를 공개하는 것. stdio에서는 **빈 객체라도** 선언 자체가 거부 |
+| `sandbox_options` | | 이 서버가 샌드박스에 붙는다는 선언(stdio 전용). 선언한 서버만 `AGENT_TRACER_OPTIONS`(= 백엔드 크리덴셜)를 받는다 |
+| `startup_timeout_s` | | initialize 핸드셰이크 대기 상한 (기본 15초). 클라이언트가 선택된 서버를 한 번에 순차 연결하므로 실제 상한은 선택된 매니페스트 값의 **합**. 넘기면 그 시도를 중단 |
+| `call_timeout_s` | | 툴 호출 타임아웃 (기본 60초, stdio·http 모두 적용). 넘긴 호출은 취소되고 모델에게 타임아웃 결과로 돌아간다 — 궤적은 계속된다 |
 | `tools` | | 선언적 툴 목록 (문서·계약 테스트용 — 런타임 진실은 MCP discovery) |
 
 ## 예제: echo 서버

@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from agent_tracer.config import ConfigError, load_config
 from agent_tracer.config.schema import (
+    EnvironmentConfig,
     MCPDiscoveryConfig,
     ModelConfig,
     RunnerConfig,
@@ -37,6 +38,33 @@ class TestApiKey:
     def test_empty_key_refuses_to_run(self):
         with pytest.raises(ConfigError, match="refusing to run"):
             resolve_env_ref("", field="model.api_key")
+
+
+class TestEnvironmentOptions:
+    """`options` is what `attach()` takes, so it is where a backend's key goes
+    — a backend reads `api_key` out of it. It was handed on untouched, so
+    `api_key: env:SANDBOX_KEY` passed that literal string to the backend
+    and a plaintext key in the YAML was the only thing that worked."""
+
+    def test_an_env_ref_resolves(self, monkeypatch):
+        monkeypatch.setenv("AT_TEST_KEY", "sk-secret")
+        config = EnvironmentConfig(type="docker", image="t", options={"api_key": "env:AT_TEST_KEY"})
+
+        assert config.resolved_options() == {"api_key": "sk-secret"}
+
+    def test_a_literal_still_passes_through(self):
+        config = EnvironmentConfig(type="docker", image="t", options={"user": "someone"})
+
+        assert config.resolved_options() == {"user": "someone"}
+
+    def test_an_unset_ref_refuses_to_run(self, monkeypatch):
+        monkeypatch.delenv("AT_TEST_MISSING_KEY", raising=False)
+        config = EnvironmentConfig(
+            type="docker", image="t", options={"api_key": "env:AT_TEST_MISSING_KEY"}
+        )
+
+        with pytest.raises(ConfigError, match="AT_TEST_MISSING_KEY"):
+            config.resolved_options()
 
 
 class TestReasoningKey:
@@ -85,3 +113,28 @@ model:
     def test_bad_override_shape(self, tmp_path):
         with pytest.raises(ConfigError):
             load_config(self._write(tmp_path), ["runner.max_concurrency"])
+
+    def test_an_environment_type_that_does_not_exist_is_refused(self, tmp_path):
+        """`type` is a str rather than a Literal so a backend can be installed
+        rather than merged, and nothing checked it until `build_provider` ran —
+        inside `Runner._run_one`'s `except Exception`. A typo was a per-task
+        failure retried three times, once for every task, instead of a config
+        the run refuses to start with."""
+        with pytest.raises(ConfigError, match="dokcer"):
+            load_config(self._write(tmp_path, "environment: {type: dokcer, image: x}"))
+
+    def test_a_backend_that_exists_still_loads(self, tmp_path):
+        config = load_config(self._write(tmp_path, "environment: {type: docker, image: x}"))
+        assert config.environment.type == "docker"
+
+    def test_a_backend_option_that_cannot_be_resolved_is_refused_at_startup(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.delenv("AT_TEST_MISSING_KEY", raising=False)
+        environment = (
+            "environment: {type: docker, image: x, "
+            "options: {api_key: 'env:AT_TEST_MISSING_KEY'}}"
+        )
+
+        with pytest.raises(ConfigError, match="AT_TEST_MISSING_KEY"):
+            load_config(self._write(tmp_path, environment))

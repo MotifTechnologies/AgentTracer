@@ -7,6 +7,7 @@ inside its own agent session so concurrent tasks stay fully isolated
 
 from __future__ import annotations
 
+from contextlib import AsyncExitStack
 from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
@@ -45,28 +46,34 @@ SUBMIT_TOOL: Tool[SubmitParams, ToolUseCountMetadata] = Tool(
 )
 
 
-def _build_exec_provider(config: RunConfig):
-    if config.environment.type == "docker":
-        from agent_tracer.environments.docker import IsolatedDockerCodeExecToolProvider
+def _describe_sandbox(config: RunConfig, provider: Any) -> dict[str, str]:
+    """What an out-of-process tool needs to reach this task's sandbox."""
+    from agent_tracer.environments import describe
+    from agent_tracer.mcp.discovery import sandbox_env
 
-        return IsolatedDockerCodeExecToolProvider(
-            source=config.environment.image,
-            working_dir=config.environment.working_dir,
-            env_vars=config.environment.env_vars or None,
-            shell_timeout=config.environment.shell_timeout,
-            network_isolation=config.environment.network_isolation,
-            mem_limit=config.environment.mem_limit,
-            pids_limit=config.environment.pids_limit,
-        )
-    from stirrup.tools.code_backends import LocalCodeExecToolProvider
-
-    return LocalCodeExecToolProvider(shell_timeout=config.environment.shell_timeout)
+    return sandbox_env(
+        env_type=config.environment.type,
+        # Resolved, not as written: `api_key: env:SANDBOX_API_KEY` has to reach
+        # `attach()` as the key. Unresolvable already aborted at startup.
+        options=config.environment.resolved_options(),
+        **describe(config.environment, provider),
+    )
 
 
 class SingleAgentOrchestrator:
-    def __init__(self, config: RunConfig, mcp_config: Any | None):
+    def __init__(
+        self,
+        config: RunConfig,
+        mcp_config: Any | None,
+        manifests: dict[str, Any] | None = None,
+        mcp_root: Any | None = None,
+    ):
         self.config = config
         self.mcp_config = mcp_config
+        # Kept so the config can be rebuilt per task: the sandbox description
+        # differs per task and a manifest, read once at startup, cannot carry it.
+        self.manifests = manifests
+        self.mcp_root = mcp_root
 
     def _build_client(self) -> ReasoningKeyChatClient:
         m = self.config.model
@@ -92,16 +99,54 @@ class SingleAgentOrchestrator:
         agent_id = self.config.agent.role or "agent-0"
         recorder = TrajectoryRecorder(trajectory, agent_id=agent_id, on_tokens=on_tokens)
 
-        tools: list[Any] = [_build_exec_provider(self.config)]
-        if self.config.tools.web:
-            from stirrup.tools.web import WebToolProvider
+        from agent_tracer.environments import build_provider
 
-            tools.append(WebToolProvider(brave_api_key=self.config.tools.resolved_brave_key()))
-        if self.mcp_config is not None:
-            from stirrup.tools.mcp import MCPToolProvider
+        exec_provider = build_provider(self.config.environment, task_id=task.task_id)
 
-            tools.append(MCPToolProvider(self.mcp_config))
+        # The sandbox is entered here rather than by `agent.session()` with
+        # everything else. An MCP server that works on the agent's files has to
+        # be told which sandbox is this task's, and that identity does not exist
+        # until the sandbox is up. Handed to the session together, the two start
+        # in an unspecified order and there is no point at which the id can be
+        # read and passed on.
+        async with AsyncExitStack() as stack:
+            exec_tool = await stack.enter_async_context(exec_provider)
 
+            tools: list[Any] = [exec_tool]
+            if self.config.tools.web:
+                from stirrup.tools.web import WebToolProvider
+
+                tools.append(WebToolProvider(brave_api_key=self.config.tools.resolved_brave_key()))
+            if self.mcp_config is not None:
+                from agent_tracer.mcp.provider import TimeoutMCPToolProvider
+
+                tools.append(
+                    TimeoutMCPToolProvider(
+                        self._task_mcp_config(exec_provider), self.manifests or {}
+                    )
+                )
+
+            return await self._run_agent(task, trajectory, agent_id, recorder, tools)
+
+    def _task_mcp_config(self, provider: Any) -> Any:
+        """The MCP config for this task, told which sandbox to work on."""
+        if not self.manifests or self.mcp_root is None:
+            return self.mcp_config
+
+        from agent_tracer.mcp.discovery import build_stirrup_mcp_config
+
+        return build_stirrup_mcp_config(
+            self.manifests, self.mcp_root, _describe_sandbox(self.config, provider)
+        )
+
+    async def _run_agent(
+        self,
+        task: Task,
+        trajectory: Trajectory,
+        agent_id: str,
+        recorder: TrajectoryRecorder,
+        tools: list[Any],
+    ) -> dict[str, Any]:
         agent = Agent(
             self._build_client(),
             name=agent_id,

@@ -25,14 +25,25 @@ Ask for values and every computed cell comes back `None`, which reads as "the
 cell is blank" rather than "nobody has evaluated this". So both are read and
 returned together, and a formula with no cached value is called out.
 
-**A round trip is lossy.** openpyxl rebuilds the file it writes: charts, images,
-pivot tables and comments in the original do not survive. `write_cells` says so
-rather than discovering it downstream, and refuses outright when the workbook
-holds any of them.
+**A round trip is lossy.** openpyxl rebuilds the file it writes. Charts, images,
+shapes and text boxes, pivot tables, .xlsm macros and sheet-level extensions
+(sparklines, x14 data validation) do not survive it, and most of them never
+reach openpyxl's object model at all — so the guard reads the file's own parts
+rather than asking the workbook. `write_cells` refuses outright when any is
+present. Cell comments *do* survive; the docstring used to promise a refusal
+for them, which was a documentation error rather than a missing check.
+
+The one loss that cannot be refused is the formula cache: saving writes `<v/>`
+for every formula openpyxl did not evaluate, so a workbook a spreadsheet
+application had computed loses those values across every sheet, and a later
+`read_range` calls it "a workbook never opened by a spreadsheet application" —
+a claim the write just made true. Refusing on it would refuse the ordinary
+case, so it is reported instead.
 """
 
 import datetime as dt
 import io
+import re
 
 from mcp.server import MCPServer
 
@@ -102,6 +113,84 @@ def _sheet(workbook, name: str | None):
     if name not in workbook.sheetnames:
         raise ValueError(f"No sheet named {name!r}. This workbook has: {', '.join(workbook.sheetnames)}")
     return workbook[name]
+
+
+#: Parts whose presence means a save would drop something, by name prefix.
+#:
+#: Read off the file because openpyxl's object model does not carry any of it:
+#: a workbook with macros or a pivot table loaded clean, saved clean and
+#: reported success. `drawing` rather than the whole `xl/drawings/` folder
+#: because a cell comment's VML lives there too — and comments *do* survive.
+_LOSSY_PARTS = (
+    ("xl/vbaProject.bin", "macros (openpyxl loads with keep_vba=False)"),
+    ("xl/pivotCache/", "pivot tables"),
+    ("xl/pivotTables/", "pivot tables"),
+    ("xl/drawings/drawing", "drawings — charts, images, shapes or text boxes"),
+)
+
+#: A sheet-level `<extLst>` carries sparklines and x14 data validation, and
+#: openpyxl writes neither back.
+_SHEET_EXTENSION = re.compile(rb"<extLst[ >/]")
+
+#: `<f>A1*B1</f><v>42</v>` — a formula and the value something computed for it.
+#: Saving writes `<v/>` in its place. The second alternative is a shared
+#: formula, whose `<f>` is self-closing on every cell but the first.
+_CACHED_VALUE = re.compile(rb"</f>\s*<v[ >]|<f[^>]*/>\s*<v[ >]")
+
+
+def _scan(archive, part: str, pattern) -> bool:
+    """Search one zip member without holding it in memory.
+
+    A sheet's XML runs to hundreds of megabytes decompressed, which is exactly
+    what `read_range` is careful not to do.
+    """
+    tail = b""
+    with archive.open(part) as stream:
+        while block := stream.read(1 << 20):
+            if pattern.search(tail + block):
+                return True
+            tail = block[-256:]
+    return False
+
+
+def _losses(raw: bytes, workbook) -> tuple[list[str], bool]:
+    """What saving this workbook would silently drop, and whether it would clear
+    the formula cache.
+
+    The first is a refusal; the second is not. Every workbook a spreadsheet
+    application has ever saved has cached values, so refusing on them would
+    refuse the ordinary case — but it has to be said, because the loss is
+    invisible until a later `read_range` calls the file "never opened by a
+    spreadsheet application".
+    """
+    import zipfile
+
+    losses = []
+    for name in workbook.sheetnames:
+        page = workbook[name]
+        if getattr(page, "_charts", None):
+            losses.append(f"{name}: {len(page._charts)} chart(s)")
+        if getattr(page, "_images", None):
+            losses.append(f"{name}: {len(page._images)} image(s)")
+
+    # The counts above already name every chart and image, so the drawings part
+    # only needs to speak when they do not — that is the shape or the text box,
+    # which openpyxl does not model at all.
+    skip = {"xl/drawings/drawing"} if losses else set()
+
+    cached = False
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        parts = archive.namelist()
+        for prefix, what in _LOSSY_PARTS:
+            if prefix in skip or what in losses:
+                continue
+            if any(part.startswith(prefix) for part in parts):
+                losses.append(what)
+        sheets = [part for part in parts if part.startswith("xl/worksheets/sheet")]
+        if any(_scan(archive, part, _SHEET_EXTENSION) for part in sheets):
+            losses.append("sheet extensions — sparklines, x14 data validation")
+        cached = any(_scan(archive, part, _CACHED_VALUE) for part in sheets)
+    return losses, cached
 
 
 def _extent(sheet) -> tuple[int, int]:
@@ -329,9 +418,17 @@ def find_cells(path: str, pattern: str, sheet: str | None = None, max_results: i
 def write_cells(path: str, cells: dict[str, str | int | float | bool | None], sheet: str | None = None) -> dict:
     """Set specific cells in an existing workbook, leaving the rest alone.
 
-    Refuses when the workbook contains charts, images or comments, because
-    writing it rebuilds the file and those would be dropped without warning. Use
-    `code_exec` if that trade is acceptable for a particular task.
+    Writing rebuilds the whole file, so it refuses when the workbook holds
+    anything that would not survive that: charts, images, shapes or text boxes,
+    pivot tables, .xlsm macros, or sheet-level extensions (sparklines, x14 data
+    validation). Use `code_exec` if that trade is acceptable for a task. Cell
+    comments do survive and are not refused.
+
+    One loss is not refusable and is reported instead. Saving clears every
+    cached formula value in the workbook — openpyxl writes `<v/>` for a formula
+    it did not evaluate — so a workbook a spreadsheet application had computed
+    comes back with `value: null` on every formula cell, everywhere, not only on
+    the sheet edited. `cleared_formula_cache` says when that happened.
 
     A value beginning with "=" is stored as a formula. It will have no computed
     value until a spreadsheet application opens the file — `read_range` says so
@@ -353,13 +450,7 @@ def write_cells(path: str, cells: dict[str, str | int | float | bool | None], sh
 
     # Checked across the whole workbook, not just the sheet being edited: the
     # save rewrites the entire file.
-    casualties = []
-    for name in workbook.sheetnames:
-        page = workbook[name]
-        if getattr(page, "_charts", None):
-            casualties.append(f"{name}: {len(page._charts)} chart(s)")
-        if getattr(page, "_images", None):
-            casualties.append(f"{name}: {len(page._images)} image(s)")
+    casualties, cleared_cache = _losses(raw, workbook)
     if casualties:
         raise ValueError(
             "Refusing to write: saving rebuilds the workbook and would silently drop "
@@ -384,6 +475,15 @@ def write_cells(path: str, cells: dict[str, str | int | float | bool | None], sh
         "written": sorted(written),
         "count": len(written),
         "size_bytes": buffer.tell(),
+        "cleared_formula_cache": cleared_cache,
+        "note": (
+            "Every cached formula value in this workbook is now gone — openpyxl writes "
+            "<v/> for a formula it has not evaluated, and saving rebuilds the whole file, "
+            "not just the sheet edited. read_range will report those cells as uncomputed "
+            "until a spreadsheet application opens this file again."
+            if cleared_cache
+            else None
+        ),
     }
 
 

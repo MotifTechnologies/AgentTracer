@@ -21,6 +21,7 @@ travel through `SandboxAccess.exec` and base64 in both directions.
 
 import asyncio
 import datetime as dt
+import io
 import json
 import os
 import tempfile
@@ -97,12 +98,87 @@ def _build_with_chart(path: Path) -> None:
     wb.save(path)
 
 
+def _rewrite_zip(path: Path, *, mutate=None, extra=None) -> None:
+    """Rewrite a workbook's parts in place.
+
+    openpyxl cannot produce a macro, a pivot cache, a text box or a cached
+    formula value — which is the point: none of them survive it, and each has
+    to be built into the file directly to be tested at all.
+    """
+    import zipfile
+
+    with zipfile.ZipFile(io.BytesIO(path.read_bytes())) as archive:
+        members = [(name, archive.read(name)) for name in archive.namelist()]
+    with zipfile.ZipFile(path, "w") as out:
+        for name, data in members:
+            out.writestr(name, mutate(name, data) if mutate else data)
+        for name, data in (extra or {}).items():
+            out.writestr(name, data)
+
+
+def _build_plain(path: Path) -> None:
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    wb.active["A1"] = "value"
+    wb.save(path)
+
+
+def _build_cached(path: Path) -> None:
+    """A formula carrying the value a spreadsheet application already computed."""
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws["A1"], ws["B1"], ws["C1"] = 6, 7, "=A1*B1"
+    wb.save(path)
+    _rewrite_zip(
+        path,
+        mutate=lambda name, data: (
+            data.replace(b"<f>A1*B1</f>", b"<f>A1*B1</f><v>42</v>")
+            if name.startswith("xl/worksheets/")
+            else data
+        ),
+    )
+
+
+def _build_with_comment(path: Path) -> None:
+    import openpyxl
+    from openpyxl.comments import Comment
+
+    wb = openpyxl.Workbook()
+    wb.active["A1"] = "value"
+    wb.active["A1"].comment = Comment("검토 필요", "reviewer")
+    wb.save(path)
+
+
 async def main() -> None:
     workdir = Path(tempfile.mkdtemp())
     _build(workdir / "sales.xlsx")
     _build_with_chart(workdir / "charted.xlsx")
     _build_sparse(workdir / "sparse.xlsx")
+    _build_cached(workdir / "cached.xlsx")
+    _build_with_comment(workdir / "commented.xlsx")
     (workdir / "not-a.xlsx").write_text("plain text\n", encoding="utf-8")
+
+    # Four things a save drops that openpyxl's object model never sees, so the
+    # guard has to read the file. Built by hand for the same reason.
+    for name, parts, mutate in (
+        ("macro.xlsm", {"xl/vbaProject.bin": b"\xd0\xcf\x11\xe0 not really a macro"}, None),
+        ("pivot.xlsx", {"xl/pivotCache/pivotCacheDefinition1.xml": b"<pivotCacheDefinition/>"}, None),
+        ("shape.xlsx", {"xl/drawings/drawing1.xml": b"<wsDr><twoCellAnchor/></wsDr>"}, None),
+        (
+            "sparkline.xlsx",
+            None,
+            lambda n, d: (
+                d.replace(b"</worksheet>", b"<extLst><ext uri=\"{05C60535}\"/></extLst></worksheet>")
+                if n.startswith("xl/worksheets/")
+                else d
+            ),
+        ),
+    ):
+        _build_plain(workdir / name)
+        _rewrite_zip(workdir / name, mutate=mutate, extra=parts)
 
     params = StdioServerParameters(
         command=MANIFEST["command"],
@@ -219,6 +295,43 @@ async def main() -> None:
         bad = await session.call_tool("write_cells", {"path": "charted.xlsx", "cells": {"A1": "x"}})
         assert bad.is_error and "chart" in bad.content[0].text, bad.content[0].text
         print("write_cells on a charted workbook -> refused rather than silently stripping it")
+
+        # The rest of what a save drops. None of it reaches openpyxl's object
+        # model, so all of it used to pass through and report success.
+        for name, expected in (
+            ("macro.xlsm", "macro"),
+            ("pivot.xlsx", "pivot"),
+            ("shape.xlsx", "drawing"),
+            ("sparkline.xlsx", "sheet extension"),
+        ):
+            bad = await session.call_tool("write_cells", {"path": name, "cells": {"A1": "x"}})
+            assert bad.is_error, f"{name} was written: {bad.content[0].text}"
+            assert expected in bad.content[0].text, (name, bad.content[0].text)
+        print("write_cells -> macros, pivots, shapes and sheet extensions refused too")
+
+        # And the direction the docs had wrong: the tool promised to refuse
+        # comments, and comments survive the round trip intact.
+        out = _payload(await session.call_tool(
+            "write_cells", {"path": "commented.xlsx", "cells": {"A1": "편집됨"}}))
+        assert out["count"] == 1, out
+        wb = openpyxl.load_workbook(workdir / "commented.xlsx")
+        assert wb.active["A1"].value == "편집됨", "the write did not reach the file"
+        assert wb.active["A1"].comment is not None, "the comment was dropped after all"
+        print("write_cells on a commented workbook -> written, and the comment survives")
+
+        # A workbook a spreadsheet application has computed. Saving rebuilds it
+        # with `<v/>` everywhere, so the values are gone from every sheet — and
+        # the next read_range blamed "a workbook never opened by a spreadsheet
+        # application", a claim this tool had just made true.
+        out = _payload(await session.call_tool("read_range", {"path": "cached.xlsx"}))
+        assert {c["ref"]: c["value"] for c in out["cells"]}["C1"] == 42, out
+        out = _payload(await session.call_tool(
+            "write_cells", {"path": "cached.xlsx", "cells": {"A1": 3}}))
+        assert out["cleared_formula_cache"], out
+        assert out["note"] and "cached" in out["note"], out["note"]
+        out = _payload(await session.call_tool("read_range", {"path": "cached.xlsx"}))
+        assert {c["ref"]: c["value"] for c in out["cells"]}["C1"] is None, out
+        print("write_cells clears the formula cache -> said so, rather than left to be discovered")
 
         bad = await session.call_tool("read_range", {"path": "sales.xlsx", "sheet": "nope"})
         assert bad.is_error and SHEET in bad.content[0].text, bad.content[0].text

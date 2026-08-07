@@ -157,8 +157,8 @@ PEP 723 헤더에는 그 서버가 실제로 쓰는 의존성만 적으면 된�
 | `env` | | spawn 환경변수(stdio). 시크릿은 반드시 `"env:VAR_NAME"` 참조로 — 원문 저장 금지, 미해석 시 실행 거부 |
 | `headers` | | 매 요청에 붙는 HTTP 헤더(http 전용). `env` 와 같은 규율 — `env:` 참조는 기동 시 해석되고 실패하면 실행 거부, 그 외 값은 적은 그대로 전송. API 키를 매니페스트에 적으면 repo에 키를 공개하는 것. stdio에서는 **빈 객체라도** 선언 자체가 거부 |
 | `sandbox_options` | | 이 서버가 샌드박스에 붙는다는 선언(stdio 전용). 선언한 서버만 `AGENT_TRACER_OPTIONS`(= 백엔드 크리덴셜)를 받는다 |
-| `startup_timeout_s` | | initialize 핸드셰이크 대기 상한 (기본 15초) |
-| `call_timeout_s` | | 툴 호출 기본 타임아웃 (기본 60초) |
+| `startup_timeout_s` | | initialize 핸드셰이크 대기 상한 (기본 15초). 클라이언트가 선택된 서버를 한 번에 순차 연결하므로 실제 상한은 선택된 매니페스트 값의 **합**. 넘기면 그 시도를 중단 |
+| `call_timeout_s` | | 툴 호출 타임아웃 (기본 60초, stdio·http 모두 적용). 넘긴 호출은 취소되고 모델에게 타임아웃 결과로 돌아간다 — 궤적은 계속된다 |
 | `tools` | | 선언적 툴 목록 (문서·계약 테스트용 — 런타임 진실은 MCP discovery) |
 
 ## 예제: echo 서버

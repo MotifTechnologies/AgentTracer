@@ -82,13 +82,13 @@
       "type": "number",
       "exclusiveMinimum": 0,
       "default": 15,
-      "description": "Max seconds to wait for the server to complete the MCP initialize handshake before the run is aborted."
+      "description": "Max seconds to wait for the server to complete the MCP initialize handshake. The client connects every selected server in one sequential pass, so what is enforced is the sum of the selected manifests' values; exceeding it aborts the attempt rather than waiting for the runner's task timeout. A server's first `uv run` builds its environment and can exceed this on a cold cache."
     },
     "call_timeout_s": {
       "type": "number",
       "exclusiveMinimum": 0,
       "default": 60,
-      "description": "Default per-tool-call timeout in seconds. A timed-out call is recorded as a tool_result error event; the agent loop continues."
+      "description": "Per-tool-call timeout in seconds, enforced on both transports. A call that exceeds it is cancelled and comes back to the model as a timeout result, so the agent loop continues rather than losing the trajectory."
     },
     "tools": {
       "type": "array",

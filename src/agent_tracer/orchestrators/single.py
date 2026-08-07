@@ -118,9 +118,13 @@ class SingleAgentOrchestrator:
 
                 tools.append(WebToolProvider(brave_api_key=self.config.tools.resolved_brave_key()))
             if self.mcp_config is not None:
-                from stirrup.tools.mcp import MCPToolProvider
+                from agent_tracer.mcp.provider import TimeoutMCPToolProvider
 
-                tools.append(MCPToolProvider(self._task_mcp_config(exec_provider)))
+                tools.append(
+                    TimeoutMCPToolProvider(
+                        self._task_mcp_config(exec_provider), self.manifests or {}
+                    )
+                )
 
             return await self._run_agent(task, trajectory, agent_id, recorder, tools)
 

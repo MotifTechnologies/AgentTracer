@@ -191,6 +191,10 @@ class RetryConfig(StrictModel):
 
 class RunnerConfig(StrictModel):
     max_concurrency: int = 8
+    # Rollouts per task. >1 is how best-of-N / rejection-sampled SFT data is
+    # made: sample repeatedly, keep what passed. Each sample is a separate
+    # trajectory, checkpointed independently.
+    samples_per_task: int = 1
     task_timeout: float = 1800.0
     retry: RetryConfig = Field(default_factory=RetryConfig)
     checkpoint: bool = True

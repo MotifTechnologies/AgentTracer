@@ -23,6 +23,9 @@ mcp:
   include: ["filesystem", "sqlite", "calculator", "time"]
 
 runner:
+  # Rollouts per task. >1 for best-of-N / rejection sampling: sample
+  # repeatedly, keep what passed. Each sample is checkpointed separately.
+  samples_per_task: 1
   max_concurrency: 6
   task_timeout: 600
   retry:

@@ -120,6 +120,7 @@ def trajectory_to_record(
         },
         "extra": {
             "task": traj["task_id"],
+            "sample_idx": traj.get("sample_idx", 0),
             "attempt": result.get("attempt", 1),
             "steps": steps,
             "usage": {

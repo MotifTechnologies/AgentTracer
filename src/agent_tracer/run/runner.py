@@ -95,7 +95,9 @@ class Runner:
             },
         }
 
-    def _completed_task_ids(self) -> set[str]:
+    def _completed_samples(self) -> set[tuple[str, int]]:
+        """Which (task, sample) pairs already succeeded — keyed on both, so a
+        resumed run does not mistake sample 0 for the whole task."""
         if not (self.config.runner.checkpoint and self.results_path.is_file()):
             return set()
         done = set()
@@ -103,15 +105,19 @@ class Runner:
             if line.strip():
                 row = json.loads(line)
                 if row.get("exit_status") != "error":
-                    done.add(row["task_id"])
+                    done.add((row["task_id"], row.get("sample_idx", 0)))
         return done
 
-    async def _run_one(self, task: Task, counter: _TokenCounter) -> dict[str, Any]:
+    async def _run_one(
+        self, task: Task, sample_idx: int, counter: _TokenCounter
+    ) -> dict[str, Any]:
         retry = self.config.runner.retry
         last_error: str | None = None
 
         for attempt in range(1, retry.max_attempts + 1):
-            trajectory = Trajectory(task_id=task.task_id, metadata=self._base_metadata())
+            trajectory = Trajectory(
+                task_id=task.task_id, sample_idx=sample_idx, metadata=self._base_metadata()
+            )
             try:
                 result = await asyncio.wait_for(
                     self.orchestrator.run_task(task, trajectory, on_tokens=counter.on_tokens),
@@ -131,6 +137,7 @@ class Runner:
                     trajectory.save(self.trajectory_dir)
                 return {
                     "task_id": task.task_id,
+                    "sample_idx": sample_idx,
                     "exit_status": result["exit_status"],
                     "submission": result["submission"],
                     "correct": evaluation.correct,
@@ -151,6 +158,7 @@ class Runner:
             trajectory.save(self.trajectory_dir)
         return {
             "task_id": task.task_id,
+            "sample_idx": sample_idx,
             "exit_status": "error",
             "submission": None,
             "correct": None,
@@ -162,8 +170,10 @@ class Runner:
         dataset = get_dataset(self.config.dataset.name, self.config.dataset.path)
         tasks = dataset.load(self.config.dataset.split, self.config.dataset.limit)
 
-        done_ids = self._completed_task_ids()
-        pending = [t for t in tasks if t.task_id not in done_ids]
+        samples = self.config.runner.samples_per_task
+        done = self._completed_samples()
+        wanted = [(t, i) for t in tasks for i in range(samples)]
+        pending = [(t, i) for t, i in wanted if (t.task_id, i) not in done]
 
         self.config.output.path.mkdir(parents=True, exist_ok=True)
         counter = _TokenCounter()
@@ -181,11 +191,13 @@ class Runner:
             TimeRemainingColumn(),
             transient=False,
         )
-        bar = progress.add_task("run", total=len(tasks), completed=len(done_ids))
+        bar = progress.add_task(
+            "run", total=len(wanted), completed=len(wanted) - len(pending)
+        )
 
-        async def worker(task: Task) -> None:
+        async def worker(task: Task, sample_idx: int) -> None:
             async with semaphore:
-                row = await self._run_one(task, counter)
+                row = await self._run_one(task, sample_idx, counter)
             async with results_lock:
                 results.append(row)
                 with self.results_path.open("a", encoding="utf-8") as f:
@@ -193,5 +205,5 @@ class Runner:
             progress.advance(bar)
 
         with progress:
-            await asyncio.gather(*(worker(t) for t in pending))
+            await asyncio.gather(*(worker(t, i) for t, i in pending))
         return results

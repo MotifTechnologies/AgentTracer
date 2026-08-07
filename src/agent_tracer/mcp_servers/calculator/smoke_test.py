@@ -24,6 +24,9 @@ EXACT = [
     ("7 // 2", "3"),
     ("2 ** 10", "1024"),
     ("-3 + 5", "2"),
+    # 61 digits. Formatted as a plain integer, a rounded answer here is
+    # indistinguishable from the real one — the failure the tool is for.
+    ("2 ** 200", str(2**200)),
 ]
 
 REFUSED = [
@@ -52,9 +55,20 @@ async def main() -> None:
         for expression, expected in EXACT:
             result = await session.call_tool("calculate", {"expression": expression})
             assert not result.is_error, result.content[0].text
-            got = json.loads(result.content[0].text)["result"]
+            payload = json.loads(result.content[0].text)
+            got = payload["result"]
             assert got == expected, f"{expression} -> {got!r}, expected {expected!r}"
+            assert payload["exact"], f"{expression} -> reported inexact"
             print(f"  {expression:<18} = {got}")
+
+        # A division that does not terminate cannot be written out, so it is
+        # rounded — and has to say so rather than read as the whole answer.
+        payload = json.loads(
+            (await session.call_tool("calculate", {"expression": "1 / 3"})).content[0].text
+        )
+        assert not payload["exact"], payload
+        assert payload["result"].startswith("0.333333"), payload
+        print(f"  1 / 3 rounded, and reports exact={payload['exact']}")
 
         for expression in REFUSED:
             result = await session.call_tool("calculate", {"expression": expression})

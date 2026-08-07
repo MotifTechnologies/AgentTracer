@@ -150,32 +150,41 @@ def extract_text(path: str, first_page: int = 1, last_page: int | None = None) -
     reader = _reader(raw)
     start, end, truncated = _page_span(reader, first_page, last_page)
 
-    pages, empty = [], 0
+    pages, empty = [], []
     for number in range(start, end + 1):
         text = reader.pages[number - 1].extract_text() or ""
         if not text.strip():
-            empty += 1
+            empty.append(number)
         clipped = text[:MAX_CHARS_PER_PAGE]
         pages.append(
             {
                 "page": number,
                 "text": clipped,
                 "char_count": len(text),
+                # Per page, because the document as a whole is the wrong unit:
+                # one stamped or watermarked page in a scan is enough to make
+                # every other page's "" look like a page that is genuinely blank.
+                "empty": not text.strip(),
                 "truncated": len(text) > MAX_CHARS_PER_PAGE,
             }
         )
 
+    listed = ", ".join(str(number) for number in empty[:20])
     return {
         "path": target,
         "total_pages": len(reader.pages),
         "pages": pages,
         "truncated": truncated,
         # A scan has pages and no text. Saying so beats returning "" and letting
-        # the model conclude the document is blank.
+        # the model conclude the document is blank — and it has to be said when
+        # *any* page is empty, not only when they all are. A 50-page scan with a
+        # stamp on one page is still a scan.
         "note": (
-            "every requested page held no extractable text — this is likely a scanned "
-            "document, which needs OCR rather than extraction"
-            if empty == len(pages) and pages
+            f"{len(empty)} of {len(pages)} requested pages held no extractable text "
+            f"(page{'s' if len(empty) > 1 else ''} {listed}{', ...' if len(empty) > 20 else ''}). "
+            "Those are likely scanned and need OCR rather than extraction; their `text` "
+            "is \"\" because nothing could be read, not because the page is blank."
+            if empty
             else None
         ),
     }
@@ -219,28 +228,41 @@ def extract_tables(path: str, first_page: int = 1, last_page: int | None = None)
 
 
 @mcp.tool()
-def search_text(path: str, pattern: str, case_sensitive: bool = False, max_results: int = 50) -> dict:
+def search_text(
+    path: str,
+    pattern: str,
+    case_sensitive: bool = False,
+    max_results: int = 50,
+    first_page: int = 1,
+    last_page: int | None = None,
+) -> dict:
     """Find which pages contain a string, and show the surrounding text.
 
     For locating a clause or figure in a long document without extracting all of
-    it first.
+    it first. Searches at most 50 pages per call, like the other tools here: a
+    pattern that never matches would otherwise extract every page of a
+    3,000-page PDF, past the call timeout and with the stdio server blocked for
+    everything else meanwhile. `truncated` says when there is more to search.
 
     Args:
         path: PDF file, absolute or relative to the working directory.
         pattern: Literal text to look for. Not a regular expression.
         case_sensitive: Match case exactly.
         max_results: Stop after this many matches.
+        first_page: First page to search, 1-based and inclusive.
+        last_page: Last page, inclusive. Defaults to the end of the document.
     """
     if max_results < 1:
         raise ValueError("max_results must be >= 1")
 
     target, raw = _load(path)
     reader = _reader(raw)
+    start, end, truncated = _page_span(reader, first_page, last_page)
     needle = pattern if case_sensitive else pattern.lower()
 
     matches = []
-    for number, page in enumerate(reader.pages, start=1):
-        text = page.extract_text() or ""
+    for number in range(start, end + 1):
+        text = reader.pages[number - 1].extract_text() or ""
         haystack = text if case_sensitive else text.lower()
         position = haystack.find(needle)
         while position != -1 and len(matches) < max_results:
@@ -262,6 +284,10 @@ def search_text(path: str, pattern: str, case_sensitive: bool = False, max_resul
         "matches": matches,
         "count": len(matches),
         "pages_with_matches": sorted({m["page"] for m in matches}),
+        "total_pages": len(reader.pages),
+        "first_page": start,
+        "last_page": end,
+        "truncated": truncated,
     }
 
 

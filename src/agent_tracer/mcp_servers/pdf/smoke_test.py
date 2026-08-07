@@ -78,9 +78,29 @@ def _build_pdf(path: Path) -> None:
     c.save()
 
 
+def _build_long_pdf(path: Path, pages: int = 60) -> None:
+    """Longer than `MAX_PAGES_PER_CALL`, so a clamp is visible at all.
+
+    `search_text` had no page cap: a pattern that does not match extracted every
+    page of the document, which for a 3,000-page PDF blows past the manifest's
+    180s `call_timeout_s` and blocks the single-threaded stdio server for every
+    other call.
+    """
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    c = canvas.Canvas(str(path), pagesize=A4)
+    for number in range(1, pages + 1):
+        c.setFont("Helvetica", 12)
+        c.drawString(60, 780, f"page {number} of {pages}")
+        c.showPage()
+    c.save()
+
+
 async def main() -> None:
     workdir = Path(tempfile.mkdtemp())
     _build_pdf(workdir / "report.pdf")
+    _build_long_pdf(workdir / "long.pdf")
     (workdir / "not-a.pdf").write_text("plain text, not a PDF\n", encoding="utf-8")
     print(f"fixture: {(workdir / 'report.pdf').stat().st_size} bytes")
 
@@ -116,8 +136,19 @@ async def main() -> None:
         page1 = out["pages"][0]["text"]
         assert TITLE in page1, page1
         assert BODY in page1, page1
-        assert out["note"] is None, out["note"]
         print("extract_text -> ok, Korean survived base64 + extraction")
+
+        # One page of text does not make the other pages readable. The note
+        # fired only when *every* requested page was empty, so a 50-page scan
+        # with a stamp on one page returned `note: null` and 49 pages of "".
+        assert out["note"] and "page 3" in out["note"], out["note"]
+        assert out["pages"][2]["empty"] and not out["pages"][0]["empty"], out["pages"]
+        print("extract_text over a mixed range -> names the pages that held no text")
+
+        out = _payload(await session.call_tool(
+            "extract_text", {"path": "report.pdf", "first_page": 1, "last_page": 2}))
+        assert out["note"] is None, out["note"]
+        print("extract_text over pages that all have text -> no note")
 
         out = _payload(await session.call_tool(
             "extract_text", {"path": "report.pdf", "first_page": 2, "last_page": 2}))
@@ -157,6 +188,20 @@ async def main() -> None:
             "search_text", {"path": "report.pdf", "pattern": "PHASE TWO", "case_sensitive": True}))
         assert out["count"] == 0, out
         print("search_text case_sensitive -> ok, no false match")
+
+        # A pattern that never matches used to extract every page of the
+        # document, however long it was — the one tool here with no page cap.
+        out = _payload(await session.call_tool(
+            "search_text", {"path": "long.pdf", "pattern": "no-such-string"}))
+        assert out["count"] == 0 and out["truncated"], out
+        assert (out["first_page"], out["last_page"]) == (1, 50), out
+        print("search_text on a 60-page document -> clamped to 50 pages and says so")
+
+        out = _payload(await session.call_tool(
+            "search_text", {"path": "long.pdf", "pattern": "page 55", "first_page": 51}))
+        assert out["pages_with_matches"] == [55], out
+        assert not out["truncated"], out
+        print("search_text with a page range -> reaches the rest of the document")
 
         bad = await session.call_tool("extract_text", {"path": "not-a.pdf"})
         assert bad.is_error and "PDF" in bad.content[0].text, bad.content[0].text

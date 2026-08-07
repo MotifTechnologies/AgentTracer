@@ -1,5 +1,8 @@
 import json
 import os
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -86,6 +89,74 @@ class TestDiscovery:
         assert "echo" in manifests
 
 
+class TestPackagePath:
+    """What every stdio server is handed as PYTHONPATH.
+
+    A server runs under its own `uv run` and declares `mcp>=2.0,<3`; the runner
+    pins `mcp>=1.2,<2`. `uv run` inherits PYTHONPATH and places it ahead of the
+    venv it builds for the script, so whatever is injected here shadows the
+    server's own dependencies with the runner's. In this checkout the package's
+    parent is `src/`, which holds nothing else and hides that entirely. Once the
+    package is installed as a wheel it is site-packages, and every server dies
+    on `from mcp.server import MCPServer` — with pydantic, httpx and anyio
+    silently downgraded on the way.
+    """
+
+    def _installed(self, tmp_path: Path) -> Path:
+        """A site-packages: this package, and the neighbours it lives among."""
+        site_packages = tmp_path / "site-packages"
+        package = Path(agent_tracer.__file__).resolve().parent
+        shutil.copytree(package, site_packages / package.name)
+        # `mcp` is the one that matters: the runner's is a major version below
+        # what every server declares. It is empty here so that shadowing it in
+        # this process is harmless — in a server it is fatal.
+        for neighbour in ("mcp", "httpx"):
+            (site_packages / neighbour).mkdir(parents=True)
+            (site_packages / neighbour / "__init__.py").write_text("")
+        return site_packages
+
+    def _in(self, site_packages: Path, script: str) -> str:
+        done = subprocess.run(
+            [sys.executable, "-c", script],
+            env={**os.environ, "PYTHONPATH": str(site_packages)},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert done.returncode == 0, done.stderr
+        return done.stdout.strip()
+
+    def test_the_injected_directory_holds_agent_tracer_and_nothing_else(self, tmp_path):
+        site_packages = self._installed(tmp_path)
+
+        # Checked in the subprocess: the directory is this run's and is gone
+        # once the runner that made it exits.
+        listing = self._in(
+            site_packages,
+            "from pathlib import Path;"
+            "from agent_tracer.mcp.discovery import _package_path;"
+            "print(sorted(p.name for p in Path(_package_path()).iterdir()))",
+        )
+
+        assert listing == "['agent_tracer']"
+
+    def test_the_package_is_importable_from_it(self, tmp_path):
+        """Which is the whole reason it is injected: `environments.from_env()`
+        is the first line of every sandbox-bound server."""
+        site_packages = self._installed(tmp_path)
+
+        found = self._in(
+            site_packages,
+            "import subprocess, sys, os;"
+            "from agent_tracer.mcp.discovery import _package_path;"
+            "print(subprocess.run([sys.executable, '-c', 'import agent_tracer'],"
+            " env={'PATH': os.environ['PATH'], 'PYTHONPATH': _package_path()},"
+            " capture_output=True).returncode)",
+        )
+
+        assert found == "0"
+
+
 class TestStirrupMapping:
     def test_stdio_maps_with_cwd(self, tmp_path):
         _server(tmp_path, "alpha")
@@ -107,7 +178,7 @@ class TestStirrupMapping:
 
         entries = env["PYTHONPATH"].split(os.pathsep)
         assert "/opt/vendor/lib" in entries, env
-        assert str(Path(agent_tracer.__file__).resolve().parent.parent) in entries, env
+        assert [p.name for p in Path(entries[0]).iterdir()] == ["agent_tracer"], env
 
     def test_the_sandbox_description_is_still_a_manifest_s_to_override(self, tmp_path):
         _server(tmp_path, "alpha", env={"AGENT_TRACER_ENV_TYPE": "local"})

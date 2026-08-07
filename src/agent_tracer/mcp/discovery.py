@@ -9,8 +9,12 @@ dataset's tool distribution (fail-fast, same policy as api_key/reasoning_key).
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
+import shutil
+import tempfile
+from functools import cache
 from pathlib import Path
 from typing import Any, Literal
 
@@ -153,18 +157,35 @@ SANDBOX_ENV_VARS = (
 )
 
 
+@cache
 def _package_path() -> str:
-    """Where `agent_tracer` is importable from.
+    """A directory holding `agent_tracer` and nothing else.
 
     A server that works on the agent's files calls `environments.attach()`
     rather than branching on backend, so it has to import this package — and it
     runs under its own `uv run`, which does not inherit the runner's
     interpreter. Passing the path is what lets a server stay declared with only
     the dependencies it uses itself.
+
+    Which is exactly what the package's own parent directory takes away. `uv
+    run` inherits PYTHONPATH and places it ahead of the venv it builds for the
+    script, so every name in that directory shadows the server's copy. In a
+    checkout it is `src/`, which holds nothing else; installed as a wheel it is
+    site-packages, and the runner's `mcp>=1.2,<2` hides the `mcp>=2.0,<3` every
+    server declares — `from mcp.server import MCPServer` fails across the whole
+    tool set, with pydantic, httpx and anyio quietly downgraded beside it.
+
+    So the directory that gets injected is one of ours, with a single link in
+    it. Made once per run, and removed when the runner exits — the servers it
+    is injected into live inside that.
     """
     import agent_tracer
 
-    return str(Path(agent_tracer.__file__).resolve().parent.parent)
+    package = Path(agent_tracer.__file__).resolve().parent
+    link_dir = Path(tempfile.mkdtemp(prefix="agent_tracer_pythonpath_"))
+    (link_dir / package.name).symlink_to(package, target_is_directory=True)
+    atexit.register(shutil.rmtree, link_dir, ignore_errors=True)
+    return str(link_dir)
 
 
 def sandbox_env(

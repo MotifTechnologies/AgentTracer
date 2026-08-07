@@ -63,7 +63,7 @@
         "type": "string"
       },
       "default": {},
-      "description": "Environment variables passed to the spawned process. Values support env: references (e.g. \"env:SEARCH_API_KEY\") resolved from the runner's .env/environment — never store secrets literally. Unresolvable env: references abort the run (fail-fast), consistent with api_key/reasoning_key handling."
+      "description": "Environment variables passed to the spawned process. A value of the form \"env:VAR_NAME\" (e.g. \"env:SEARCH_API_KEY\") is resolved from the runner's .env/environment at startup, and an unresolvable one aborts the run (fail-fast, consistent with api_key/reasoning_key). Any other value is passed on exactly as written — correct for a setting, never for a secret: a key written here is a key published with the repository."
     },
     "headers": {
       "type": "object",
@@ -71,7 +71,7 @@
         "type": "string"
       },
       "default": {},
-      "description": "HTTP headers sent with every request (http only). Values support env: references (e.g. \"env:CONTEXT7_API_KEY\") — never store a key literally."
+      "description": "HTTP headers sent with every request (http only). Same rule as env: \"env:VAR_NAME\" (e.g. \"env:CONTEXT7_API_KEY\") is resolved at startup and an unresolvable one aborts the run; anything else is sent exactly as written — correct for Accept, never for a key. Omit the property entirely on a stdio server; declaring it, even empty, is refused."
     },
     "sandbox_options": {
       "type": "boolean",

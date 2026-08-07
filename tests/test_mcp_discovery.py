@@ -282,18 +282,30 @@ class TestHttpServers:
         headers = cfg.mcp_servers["docs"].headers
         assert headers == {"Authorization": "secret-value", "X-Fixed": "literal"}
 
-    def test_an_unset_ref_refuses_to_run(self, tmp_path, monkeypatch):
+    def test_an_unset_ref_refuses_the_run_before_a_task_starts(self, tmp_path, monkeypatch):
+        """`env` was resolved in the startup loop and `headers` only in the
+        per-task rebuild, so an unresolvable header secret came back as one
+        task's swallowed error — retried, recorded, and repeated for every task
+        — instead of a run that refuses to start."""
         monkeypatch.delenv("TEST_MISSING_KEY", raising=False)
         _server(tmp_path, "docs", transport="http", url="https://example.test/mcp",
                 headers={"Authorization": "env:TEST_MISSING_KEY"}, command=None, args=[])
-        manifests = discover_mcp_servers(_cfg(tmp_path))
 
         with pytest.raises(ConfigError, match="TEST_MISSING_KEY"):
-            build_stirrup_mcp_config(manifests, tmp_path)
+            discover_mcp_servers(_cfg(tmp_path))
 
     def test_headers_are_rejected_on_stdio(self, tmp_path):
         """They would be silently ignored otherwise."""
         _server(tmp_path, "local", headers={"Authorization": "x"})
+
+        with pytest.raises(ConfigError, match="http transport only"):
+            discover_mcp_servers(_cfg(tmp_path))
+
+    def test_an_empty_headers_on_stdio_is_rejected_too(self, tmp_path):
+        """The schema forbids the key on stdio whether or not it holds
+        anything; the loader looked only at the contents, so a manifest no
+        validator would accept still ran."""
+        _server(tmp_path, "local", headers={})
 
         with pytest.raises(ConfigError, match="http transport only"):
             discover_mcp_servers(_cfg(tmp_path))

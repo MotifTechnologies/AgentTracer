@@ -46,7 +46,10 @@ class MCPManifest(BaseModel):
     env: dict[str, str] = {}
     #: Sent with every request to an `http` server. Same `env:` discipline as
     #: `env`, because this is where a hosted server's API key goes and a key
-    #: committed to a manifest is a key published with the repository.
+    #: committed to a manifest is a key published with the repository. A value
+    #: that is not an `env:` reference is sent as written — right for `Accept`,
+    #: and the reason the discipline is a rule for the author rather than a
+    #: check here.
     headers: dict[str, str] = {}
     #: This server attaches to the task's sandbox and so needs whatever
     #: `environment.options` holds for that — which is where a backend's
@@ -71,7 +74,10 @@ class MCPManifest(BaseModel):
             raise ValueError("stdio transport requires 'command'")
         if self.transport == "http" and not self.url:
             raise ValueError("http transport requires 'url'")
-        if self.transport == "stdio" and self.headers:
+        # The key itself, not its contents: the schema forbids `headers` on
+        # stdio whether or not it holds anything, and a manifest that declares
+        # an empty one was accepted here while failing its own validation.
+        if self.transport == "stdio" and "headers" in self.model_fields_set:
             raise ValueError("'headers' applies to http transport only")
         return self
 
@@ -110,11 +116,16 @@ def discover_mcp_servers(config: MCPDiscoveryConfig) -> dict[str, MCPManifest]:
 
     selected = _select(manifests, config)
 
-    # Resolve env: references now so a missing secret aborts before any task runs.
+    # Resolve env: references now so a missing secret aborts before any task
+    # runs. `headers` belongs here for exactly the same reason `env` does: it
+    # was resolved only in the per-task rebuild, where an unresolvable secret
+    # came back as one swallowed task error, retried and repeated for the whole
+    # dataset, instead of a run that refuses to start.
     for manifest in selected.values():
-        for var, value in manifest.env.items():
-            if value.startswith("env:"):
-                resolve_env_ref(value, field=f"mcp[{manifest.name}].env.{var}")
+        for field, values in (("env", manifest.env), ("headers", manifest.headers)):
+            for key, value in values.items():
+                if value.startswith("env:"):
+                    resolve_env_ref(value, field=f"mcp[{manifest.name}].{field}.{key}")
     return selected
 
 

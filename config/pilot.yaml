@@ -1,0 +1,34 @@
+dataset:
+  name: custom
+  path: data/seeds/toolcall_workspace.jsonl
+
+model:
+  model_name: "moonshotai/Kimi-K3"
+  base_url: "http://127.0.0.1:8080/v1"
+  api_key: "env:VLLM_API_KEY"
+  reasoning_key: "reasoning"
+  max_tokens: 8192
+  context_window_tokens: 262144
+  timeout: 300
+
+agent:
+  max_turns: 16
+
+environment:
+  type: local
+  shell_timeout: 60
+
+mcp:
+  # context7 needs the network; pdf/xlsx/soffice have no matching seed files yet.
+  include: ["filesystem", "sqlite", "calculator", "time"]
+
+runner:
+  max_concurrency: 6
+  task_timeout: 600
+  retry:
+    max_attempts: 2
+    backoff_base: 2.0
+  checkpoint: true
+
+output:
+  path: results/pilot

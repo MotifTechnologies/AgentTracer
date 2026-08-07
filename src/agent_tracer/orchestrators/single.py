@@ -7,6 +7,8 @@ inside its own agent session so concurrent tasks stay fully isolated
 
 from __future__ import annotations
 
+import base64
+import binascii
 import shutil
 import tempfile
 from contextlib import AsyncExitStack, contextmanager
@@ -49,28 +51,51 @@ SUBMIT_TOOL: Tool[SubmitParams, ToolUseCountMetadata] = Tool(
 )
 
 
+def _resolved_target(root: Path, rel_path: str) -> Path:
+    target = root / rel_path
+    # Reject path escapes: seed content is data, not a trusted writer.
+    if not target.resolve().is_relative_to(root.resolve()):
+        raise ValueError(f"attachment path escapes workspace: {rel_path!r}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return target
+
+
 @contextmanager
 def _materialized_attachments(task: Task) -> Iterator[Path | None]:
-    """Write ``attachments.files`` to a temp dir for upload into the exec env.
+    """Write a task's attachments to a temp dir for upload into the exec env.
 
-    Seeds carry their whole workspace inline (``{relative/path: content}``) so a
-    task is reproducible from one JSONL line. stirrup uploads a directory
-    preserving relative paths, so the agent sees the layout the task describes.
+    Seeds carry their whole workspace inline so a task is reproducible from one
+    JSONL line. stirrup uploads a directory preserving relative paths, so the
+    agent sees the layout the task describes.
+
+    Two keys, because a workspace is not always text:
+
+    - ``files``:     ``{relative/path: text}``
+    - ``files_b64``: ``{relative/path: base64}`` — databases, workbooks, PDFs.
+      Declared separately rather than sniffed: guessing which strings are
+      base64 would eventually mangle a text file that happens to decode.
     """
-    files = (task.attachments or {}).get("files") if task.attachments else None
-    if not files:
+    attachments = task.attachments or {}
+    text_files = attachments.get("files") or {}
+    binary_files = attachments.get("files_b64") or {}
+    if not text_files and not binary_files:
         yield None
         return
 
+    overlap = text_files.keys() & binary_files.keys()
+    if overlap:
+        raise ValueError(f"attachment declared as both text and binary: {sorted(overlap)}")
+
     root = Path(tempfile.mkdtemp(prefix="agent_tracer_attach_"))
     try:
-        for rel_path, content in files.items():
-            target = root / rel_path
-            # Reject path escapes: seed content is data, not a trusted writer.
-            if not target.resolve().is_relative_to(root.resolve()):
-                raise ValueError(f"attachment path escapes workspace: {rel_path!r}")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(content, encoding="utf-8")
+        for rel_path, content in text_files.items():
+            _resolved_target(root, rel_path).write_text(content, encoding="utf-8")
+        for rel_path, encoded in binary_files.items():
+            try:
+                raw = base64.b64decode(encoded, validate=True)
+            except (binascii.Error, ValueError) as e:
+                raise ValueError(f"attachment {rel_path!r}: invalid base64 ({e})") from e
+            _resolved_target(root, rel_path).write_bytes(raw)
         yield root
     finally:
         shutil.rmtree(root, ignore_errors=True)

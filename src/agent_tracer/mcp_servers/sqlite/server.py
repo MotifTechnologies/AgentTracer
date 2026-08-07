@@ -47,8 +47,18 @@ _SANDBOX = None
 # so nothing about the caller's SQL has to survive a shell quoting round trip —
 # it travels base64-encoded inside the request.
 _RUNNER = r"""
-import base64, json, os, sqlite3, sys
+import base64, json, math, os, sqlite3, sys
 from pathlib import Path
+
+def cell(value):
+    # Explicit, not `default=str`: that rendered a BLOB as the Python repr
+    # b'\x00\x01\xff', which the model reads as the bytes' content, and left
+    # +-inf as a bare `Infinity` token that is not valid JSON.
+    if isinstance(value, bytes):
+        return {"blob_base64": base64.b64encode(value).decode("ascii"), "bytes": len(value)}
+    if isinstance(value, float) and not math.isfinite(value):
+        return {"float": "NaN" if math.isnan(value) else ("Infinity" if value > 0 else "-Infinity")}
+    return value
 
 req = json.loads(base64.b64decode(sys.argv[1]))
 mode = req["mode"]
@@ -79,7 +89,7 @@ try:
             # list(row), not a lookup per key: a join repeats column names and
             # Row resolves a name to the first column holding it, so every
             # duplicate would report the first one's value.
-            "rows": [list(r) for r in rows],
+            "rows": [[cell(v) for v in r] for r in rows],
             "truncated": truncated,
         }
     else:
@@ -91,7 +101,9 @@ try:
         con.commit()
         out = {"rows_affected": cur.rowcount, "last_row_id": cur.lastrowid}
     con.close()
-    print(json.dumps({"ok": True, "result": out}, default=str))
+    # allow_nan=False so a value `cell` did not account for fails loudly here
+    # rather than leaving a bare token in the reply.
+    print(json.dumps({"ok": True, "result": out}, allow_nan=False))
 except Exception as exc:
     message = f"{type(exc).__name__}: {exc}"
     if mode == "query" and isinstance(exc, sqlite3.OperationalError) and "readonly" in str(exc):

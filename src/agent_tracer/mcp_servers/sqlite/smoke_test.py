@@ -16,6 +16,7 @@ does not inherit this interpreter.
 """
 
 import asyncio
+import base64
 import json
 import os
 import tempfile
@@ -30,6 +31,11 @@ MANIFEST = json.loads((HERE / "mcp.json").read_text())
 
 def _payload(result):
     return json.loads(result.content[0].text)
+
+
+def _no_bare_constants(name):
+    """Python's JSON reader accepts `Infinity`; the JSON grammar does not."""
+    raise AssertionError(f"the reply carries a bare {name}, which is not valid JSON")
 
 
 async def main() -> None:
@@ -150,6 +156,27 @@ async def main() -> None:
         assert bad.is_error, bad.content[0].text
         assert not (workdir / "typo.db").exists(), "a read created the database"
         print("list_tables on a mistyped name -> refused, and created nothing")
+
+        # A BLOB is not text. Encoded with `default=str` it arrived as the
+        # Python repr `b'\x00\x01\xff'` — a string the model reads as content.
+        await session.call_tool("execute", {"database": db,
+            "sql": "CREATE TABLE blobs (name TEXT, data BLOB)"})
+        await session.call_tool("execute", {"database": db,
+            "sql": "INSERT INTO blobs VALUES ('icon', x'0001FF')"})
+        out = _payload(await session.call_tool("query", {
+            "database": db, "sql": "SELECT data FROM blobs"}))
+        cell = out["rows"][0][0]
+        assert base64.b64decode(cell["blob_base64"]) == b"\x00\x01\xff", out
+        assert cell["bytes"] == 3, out
+        print("query on a BLOB -> ok, reversible rather than a Python repr")
+
+        # SQLite evaluates 1e400 to +inf, and `json.dumps` writes that as a bare
+        # `Infinity` token that a strict reader on the transport rejects.
+        raw = (await session.call_tool("query", {
+            "database": db, "sql": "SELECT 1e400 AS big"})).content[0].text
+        json.loads(raw, parse_constant=_no_bare_constants)
+        assert json.loads(raw)["rows"] == [[{"float": "Infinity"}]], raw
+        print("query on a non-finite float -> ok, and the reply is valid JSON")
 
     print("smoke test OK")
 

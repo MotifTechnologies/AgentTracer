@@ -76,6 +76,19 @@ async def main() -> None:
         assert "�" in out["content"], out
         print("read_file on non-UTF-8 -> replaced, not crashed")
 
+        # `str.splitlines()` breaks on \x0b \x0c \x1c-\x1e \x85     and
+        # a bare \r as well as \n, and the window is rejoined with \n. A file
+        # holding any of them was counted as more lines than it has, paged by
+        # the wrong boundaries, and shown to the model as bytes it does not
+        # contain. A form feed is ordinary in a printable text file.
+        (workdir / "feeds.txt").write_text("one\x0ctwo\nthree\x0bfour\n", encoding="utf-8")
+        out = _payload(await session.call_tool("read_file", {"path": "feeds.txt"}))
+        assert out["total_lines"] == 2, out
+        assert out["content"] == "one\x0ctwo\nthree\x0bfour", out
+        out = _payload(await session.call_tool("read_file", {"path": "feeds.txt", "offset": 1}))
+        assert out["content"] == "three\x0bfour", out
+        print("read_file -> ok, splits on newlines and nothing else")
+
         # Korean has to survive the base64 round trip in both directions.
         await session.call_tool("write_file", {"path": "sub/new.txt", "content": "한글 내용\n둘째 줄\n"})
         out = _payload(await session.call_tool("read_file", {"path": "sub/new.txt"}))
@@ -126,6 +139,15 @@ async def main() -> None:
         kinds = {e["name"]: e["type"] for e in out["entries"]}
         assert kinds["sub"] == "directory" and kinds["note.txt"] == "file", kinds
         print("list_directory -> ok, directories marked")
+
+        # `ls` on a plain file lists the file, so this came back as a directory
+        # holding exactly one entry whose name was the whole absolute path.
+        bad = await session.call_tool("list_directory", {"path": "note.txt"})
+        assert bad.is_error, bad.content[0].text
+        assert "not a directory" in bad.content[0].text.lower(), bad.content[0].text
+        bad = await session.call_tool("list_directory", {"path": "nope-dir"})
+        assert bad.is_error, bad.content[0].text
+        print("list_directory on a file -> refused, and says which it was")
 
         out = _payload(await session.call_tool("file_info", {"path": "note.txt"}))
         assert out["size_bytes"] > 0 and "file" in out["type"], out

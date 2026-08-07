@@ -107,7 +107,14 @@ def read_file(path: str, offset: int = 0, limit: int = DEFAULT_READ_LIMIT) -> di
     if offset < 0 or limit < 1:
         raise ValueError("offset must be >= 0 and limit >= 1")
 
-    lines = _decode(_read_bytes(_abs(path))).splitlines()
+    # Split on "\n" and nothing else. `str.splitlines()` also breaks on \v \f
+    # \x1c-\x1e \x85     and a bare \r, and the window is rejoined
+    # with "\n" — so a file holding any of them was counted as more lines than
+    # it has, paged by boundaries that are not there, and handed to the model
+    # as bytes it does not contain.
+    lines = _decode(_read_bytes(_abs(path))).split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()  # a trailing newline ends the last line, it does not start one
     window = lines[offset : offset + limit]
     return {
         "path": _abs(path),
@@ -179,8 +186,15 @@ def list_directory(path: str = ".") -> dict:
         path: Directory to list, absolute or relative to the working directory.
     """
     target = _abs(path)
+    quoted = shlex.quote(target)
+    # `ls` on a plain file lists that file, which came back as a directory
+    # holding one entry whose name was the whole absolute path.
     # `-p` appends `/` to directories, which is what distinguishes them here.
-    rc, out, err = _run(f"ls -Ap {shlex.quote(target)}")
+    rc, out, err = _run(
+        f"if [ ! -e {quoted} ]; then echo 'no such directory' >&2; exit 21; fi; "
+        f"if [ ! -d {quoted} ]; then echo 'not a directory' >&2; exit 22; fi; "
+        f"ls -Ap {quoted}"
+    )
     if rc != 0:
         raise FileNotFoundError(f"Could not list {target}: {(err.strip() or out.strip())[:200]}")
 

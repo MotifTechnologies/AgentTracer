@@ -18,7 +18,7 @@ from typing import Annotated, Any, Iterator
 from pydantic import BaseModel, Field
 from stirrup import Agent, Tool, ToolResult, ToolUseCountMetadata
 
-from agent_tracer.config.schema import RunConfig
+from agent_tracer.config.schema import ConfigError, RunConfig
 from agent_tracer.core.task import Task
 from agent_tracer.core.trajectory import Trajectory
 from agent_tracer.models.client import ReasoningKeyChatClient
@@ -159,9 +159,21 @@ class SingleAgentOrchestrator:
         # Fixed once per task, then used for both the sandbox and the sandbox
         # description: an MCP server told a different working directory than the
         # one the agent got would resolve every relative path into nothing.
-        env_config = self.config.environment.model_copy(
-            update={"working_dir": self.config.environment.task_working_dir()}
-        )
+        update: dict[str, Any] = {"working_dir": self.config.environment.task_working_dir()}
+        task_image = (task.metadata or {}).get("docker_image")
+        if task_image:
+            # A task that ships its own image needs that image: its premise is a
+            # prepared checkout with the right toolchain. Running it anywhere
+            # else leaves the agent looking at an empty directory and reporting
+            # something, so a backend with no image concept is refused here
+            # rather than producing a confidently wrong trajectory.
+            if self.config.environment.type == "local":
+                raise ConfigError(
+                    f"task {task.task_id!r} ships docker_image {task_image!r}, but "
+                    "environment.type is 'local'. Use a backend that takes an image."
+                )
+            update["image"] = task_image
+        env_config = self.config.environment.model_copy(update=update)
         exec_provider = build_provider(env_config, task_id=task.task_id)
 
         # The sandbox is entered here rather than by `agent.session()` with

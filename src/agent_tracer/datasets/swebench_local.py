@@ -67,6 +67,14 @@ class SWEBenchLocalDataset:
                         "hints_text": row.get("hints_text"),
                         "created_at": row.get("created_at"),
                         "test_patch": row.get("test_patch"),
+                        # The prepared image for this instance, if the source
+                        # ships one. Each SWE instance needs its own toolchain
+                        # and dependency set, so the sandbox image is a property
+                        # of the task rather than of the run.
+                        "docker_image": row.get("docker_image"),
+                        "language": row.get("language"),
+                        "license_name": row.get("license_name"),
+                        "fail_to_pass": row.get("fail_to_pass"),
                     },
                     reference=row["patch"],
                 )

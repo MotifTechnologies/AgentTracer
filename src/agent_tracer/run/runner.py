@@ -45,6 +45,23 @@ class _TPSColumn(ProgressColumn):
         return Text(f"{self._counter.tps():,.0f} tok/s", style="cyan")
 
 
+def describe_exception(exc: BaseException, *, depth: int = 0) -> str:
+    """A message that names the actual failure.
+
+    ``str()`` on an ExceptionGroup is only "unhandled errors in a TaskGroup
+    (1 sub-exception)" — the cause is in ``exceptions``. stirrup runs its tools
+    in a TaskGroup, so every tool-side failure arrived wearing that wrapper and
+    the results file recorded nothing usable about it.
+    """
+    if isinstance(exc, BaseExceptionGroup) and exc.exceptions and depth < 4:
+        inner = ", ".join(
+            describe_exception(sub, depth=depth + 1) for sub in exc.exceptions[:3]
+        )
+        return f"{type(exc).__name__}[{inner}]"
+    text = str(exc).strip()
+    return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
+
+
 class _TokenCounter:
     def __init__(self) -> None:
         self.output_tokens = 0
@@ -148,7 +165,7 @@ class Runner:
             except (TimeoutError, asyncio.TimeoutError):
                 last_error = f"task timeout after {self.config.runner.task_timeout}s"
             except Exception as e:  # noqa: BLE001 — record and retry per policy
-                last_error = f"{type(e).__name__}: {e}"
+                last_error = describe_exception(e)
 
             trajectory.add_event("error", {"message": last_error, "attempt": attempt})
             if attempt < retry.max_attempts:

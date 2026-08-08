@@ -25,8 +25,15 @@ from agent_tracer.core.task import EvalResult, Task
 
 _REQUIRED = ("repo", "instance_id", "base_commit", "problem_statement", "patch")
 
+# The checkout is the image's own working directory, not the one the agent is
+# started in, and the sandbox has no network — without being told, the agent
+# spends several turns listing an empty directory, failing to `git clone`, and
+# searching the filesystem before it can begin.
 _TASK_INSTRUCTIONS = (
-    "You are working in a checkout of the repository {repo} at commit {base_commit}.\n"
+    "The repository {repo} is already checked out at {repo_path} inside this "
+    "container, at commit {base_commit}. Work there — your shell starts "
+    "elsewhere, and there is no network access, so do not try to clone or "
+    "install anything.\n"
     "Resolve the following issue. When done, submit the fix as a unified git diff "
     "(the full `git diff` output) via the submit tool.\n\n"
     "## Issue\n{problem_statement}"
@@ -58,6 +65,7 @@ class SWEBenchLocalDataset:
                     task_id=row["instance_id"],
                     input=_TASK_INSTRUCTIONS.format(
                         repo=row["repo"],
+                        repo_path=row.get("repo_path") or f"/{row['repo'].split('/')[-1]}",
                         base_commit=row["base_commit"],
                         problem_statement=row["problem_statement"],
                     ),

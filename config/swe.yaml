@@ -17,12 +17,15 @@ model:
   timeout: 300
 
 agent:
-  max_turns: 60
+  # A real repo takes exploring before editing; 60 was spent before the fix.
+  max_turns: 100
 
 environment:
   type: docker
   image: python:3.12-slim
-  shell_timeout: 300
+  # Builds and test suites here are minutes, not seconds: a gradle or cargo
+  # run that gets killed at 300s reads to the agent as a broken repo.
+  shell_timeout: 1200
   # Required here: 200 instances across 15 languages pull an image each, and
   # they are never reused between tasks. Released after the last sample of a
   # task, so siblings do not re-pull it.
@@ -32,10 +35,10 @@ mcp:
   include: ["filesystem", "sqlite", "calculator", "time"]
 
 runner:
-  samples_per_task: 4
+  samples_per_task: 1
   # Lower than the other sets: each task pulls its own image, so concurrency
   # here costs disk and pull bandwidth rather than just GPU.
-  max_concurrency: 8
+  max_concurrency: 32
   task_timeout: 3600
   retry:
     max_attempts: 2

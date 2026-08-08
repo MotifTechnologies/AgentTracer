@@ -221,6 +221,11 @@ class Runner:
             TextColumn("ETA"),
             TimeRemainingColumn(),
             transient=False,
+            # rich estimates speed from the last 30 seconds by default. A task
+            # that takes minutes never advances inside that window, so the
+            # estimate is always empty and the ETA reads -:--:-- for the whole
+            # run. An hour of history covers the slowest task here.
+            speed_estimate_period=3600,
         )
         bar = progress.add_task(
             "run", total=len(wanted), completed=len(wanted) - len(pending)

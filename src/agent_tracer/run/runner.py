@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections import Counter
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -166,6 +167,32 @@ class Runner:
             "attempt": retry.max_attempts,
         }
 
+    @staticmethod
+    def _task_image(task: Task) -> str | None:
+        """The image this task brought, if any. Config images are not released."""
+        return (task.metadata or {}).get("docker_image")
+
+    async def _release_when_last(
+        self, task: Task, remaining: Counter, lock: asyncio.Lock
+    ) -> None:
+        """Drop a task's image once its final rollout is done.
+
+        Counted rather than dropped eagerly: with samples_per_task > 1 the
+        siblings share the image, and removing it after the first would make
+        every other sample pull it again. Runs after the rollout returns, so
+        the container is already torn down.
+        """
+        image = self._task_image(task)
+        if not image or not self.config.environment.release_task_images:
+            return
+        async with lock:
+            remaining[image] -= 1
+            if remaining[image] > 0:
+                return
+        from agent_tracer.environments import release_image
+
+        await asyncio.to_thread(release_image, self.config.environment.type, image)
+
     async def run(self) -> list[dict[str, Any]]:
         dataset = get_dataset(self.config.dataset.name, self.config.dataset.path)
         tasks = dataset.load(self.config.dataset.split, self.config.dataset.limit)
@@ -180,6 +207,10 @@ class Runner:
         semaphore = asyncio.Semaphore(self.config.runner.max_concurrency)
         results: list[dict[str, Any]] = []
         results_lock = asyncio.Lock()
+        remaining_by_image: Counter = Counter(
+            image for task, _ in pending if (image := self._task_image(task))
+        )
+        image_lock = asyncio.Lock()
 
         progress = Progress(
             TextColumn("[bold]agent-tracer[/bold]"),
@@ -203,6 +234,7 @@ class Runner:
                 with self.results_path.open("a", encoding="utf-8") as f:
                     f.write(json.dumps(row, ensure_ascii=False) + "\n")
             progress.advance(bar)
+            await self._release_when_last(task, remaining_by_image, image_lock)
 
         with progress:
             await asyncio.gather(*(worker(t, i) for t, i in pending))

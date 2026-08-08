@@ -24,6 +24,10 @@ environment:
   type: docker
   image: python:3.12-slim
   shell_timeout: 60
+  # A task that brings its own image (SWE instances do) has it dropped once its
+  # last sample finishes: a few hundred of them would otherwise fill the disk.
+  # The image above is shared by every task without one and is never released.
+  release_task_images: true
 
 mcp:
   # context7 needs the network; soffice has no matching seed files yet.

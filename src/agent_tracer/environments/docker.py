@@ -82,3 +82,22 @@ class _DockerAccess:
 
 def attach(sandbox_id: str, options: dict[str, str]) -> _DockerAccess:
     return _DockerAccess(sandbox_id, options.get("user"))
+
+
+def release_image(image: str) -> bool:
+    """Remove an image from the local store. False if it is still in use."""
+    import docker
+    from docker.errors import APIError, ImageNotFound
+
+    client = docker.from_env()
+    try:
+        client.images.remove(image)
+        return True
+    except ImageNotFound:
+        return True
+    except APIError:
+        # In use by a container that has not been reaped yet, or by a
+        # concurrent task. Leaving it is the correct outcome.
+        return False
+    finally:
+        client.close()

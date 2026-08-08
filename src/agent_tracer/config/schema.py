@@ -115,6 +115,12 @@ class EnvironmentConfig(StrictModel):
 
     # Meaning the same thing across backends, expressed differently by each:
     # a sandbox that outlives its run, and something to attribute it to.
+    # Per-task images are pulled per task and never reused across tasks, so a
+    # run over a few hundred of them fills the disk. Only images a task brought
+    # are released; the image named in this config is shared by every task that
+    # has none of its own, and re-pulling it each time would be absurd.
+    release_task_images: bool = True
+
     ttl: float | None = None  # seconds; a backend may enforce it or label and sweep
     labels: dict[str, str] = Field(default_factory=dict)
 

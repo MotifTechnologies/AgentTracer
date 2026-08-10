@@ -39,24 +39,37 @@ def _to_text(content: Any) -> str | None:
     return str(content)
 
 
+#: Every message carries the same keys, null where a turn has no use for one.
+#: Consumers validate against a schema that requires all of them — a system
+#: turn without `tool_calls: null` is a schema violation, not a tidier record.
+_MESSAGE_KEYS = ("role", "content", "tool_calls", "thinking", "tool_call_id")
+
+
+def _message(role: str, **fields: Any) -> dict[str, Any]:
+    message = dict.fromkeys(_MESSAGE_KEYS)
+    message["role"] = role
+    message.update(fields)
+    return message
+
+
 def _conversations(traj: dict[str, Any]) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = []
     system_prompt = traj.get("metadata", {}).get("system_prompt")
     if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
+        messages.append(_message("system", content=system_prompt))
 
     pending_thinking: list[str] = []
     for event in traj["events"]:
         etype, data = event["event_type"], event["data"]
         if etype == "task":
             content = data.get("content")
-            messages.append({"role": "user", "content": _to_text(content)})
+            messages.append(_message("user", content=_to_text(content)))
         elif etype == "user_message":
-            messages.append({"role": "user", "content": _to_text(data.get("content"))})
+            messages.append(_message("user", content=_to_text(data.get("content"))))
         elif etype == "thinking":
             pending_thinking.append(data["content"])
         elif etype == "model_response":
-            msg: dict[str, Any] = {"role": "assistant", "content": data.get("content")}
+            msg = _message("assistant", content=data.get("content"))
             tool_calls = [
                 {
                     "id": tc.get("tool_call_id"),
@@ -72,19 +85,18 @@ def _conversations(traj: dict[str, Any]) -> list[dict[str, Any]]:
                 }
                 for tc in data.get("tool_calls", [])
             ]
-            if tool_calls:
-                msg["tool_calls"] = tool_calls
+            msg["tool_calls"] = tool_calls or None
             if pending_thinking:
                 msg["thinking"] = "\n\n".join(pending_thinking)
                 pending_thinking = []
             messages.append(msg)
         elif etype == "tool_result":
             messages.append(
-                {
-                    "role": "tool",
-                    "content": _to_text(data.get("content")),
-                    "tool_call_id": data.get("tool_call_id"),
-                }
+                _message(
+                    "tool",
+                    content=_to_text(data.get("content")),
+                    tool_call_id=data.get("tool_call_id"),
+                )
             )
     return messages
 

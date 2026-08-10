@@ -13,6 +13,9 @@ model:
   max_tokens: 8192
   context_window_tokens: 262144
   timeout: 300
+  bravekey
+  how to contribute
+  사례 기반(볼륨 날릴 뻔한 사례)
 
 agent:
   max_turns: 128

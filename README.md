@@ -44,3 +44,11 @@ cleaning up first costs nothing.
 ```bash
 uv run pytest tests/
 ```
+
+## License
+
+Apache License 2.0 — see `LICENSE`.
+
+`src/agent_tracer/models/client.py` adapts code from
+[Stirrup](https://github.com/ArtificialAnalysis/Stirrup) and remains under the
+MIT License; `NOTICE` carries that attribution.

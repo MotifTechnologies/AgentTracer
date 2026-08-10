@@ -16,8 +16,13 @@ agent:
   max_turns: 10
 
 tools:
-  web: false                         # stirrup built-in web_fetch/web_search
-  # brave_api_key: "env:BRAVE_API_KEY"  # required only for web_search
+  # stirrup's built-in web_fetch / web_search.
+  web: false
+  # web_search needs a Brave Search key. Set it here as an `env:` reference or
+  # a literal, or leave it out and export BRAVE_API_KEY. With `web: true` and
+  # no key anywhere the run refuses to start — upstream would otherwise drop
+  # web_search and hand the agent web_fetch alone without saying so.
+  # brave_api_key: "env:BRAVE_API_KEY"
 
 environment:
   type: local

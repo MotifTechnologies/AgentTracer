@@ -182,12 +182,19 @@ class ToolsConfig(StrictModel):
     """Built-in stirrup tools, enabled per run."""
 
     web: bool = False
-    brave_api_key: str | None = None  # env: reference or literal; web_search needs it
+    brave_api_key: str | None = Field(
+        default=None,
+        description=(
+            "Brave Search key for web_search. An 'env:VAR_NAME' reference "
+            "(recommended) or a literal. Falls back to $BRAVE_API_KEY."
+        ),
+    )
 
     def resolved_brave_key(self) -> str | None:
-        if self.brave_api_key is None:
-            return None
-        return resolve_env_ref(self.brave_api_key, field="tools.brave_api_key")
+        """The key, from config or the environment. None if neither has one."""
+        if self.brave_api_key is not None:
+            return resolve_env_ref(self.brave_api_key, field="tools.brave_api_key")
+        return os.environ.get("BRAVE_API_KEY") or None
 
 
 class RetryConfig(StrictModel):
@@ -239,6 +246,17 @@ class RunConfig(StrictModel):
         self.model.resolved_api_key()
         if not self.model.reasoning_key:
             raise ConfigError("model.reasoning_key: required — refusing to run")
+        # Upstream drops web_search from the tool set when there is no key and
+        # says nothing: the agent then gets web_fetch alone, every trajectory in
+        # the run carries a tool set nobody asked for, and the run exits clean.
+        if self.tools.web and not self.tools.resolved_brave_key():
+            raise ConfigError(
+                "tools.web is on but no Brave Search key was found. Set "
+                "tools.brave_api_key (an 'env:VAR_NAME' reference or a literal) "
+                "or BRAVE_API_KEY in the environment — without it web_search is "
+                "silently dropped and only web_fetch reaches the agent. "
+                "Set tools.web: false if that is what you want."
+            )
         # `environment.type` is a str, so the registry is the only thing that
         # knows whether it names a backend. Left to `build_provider`, the first
         # check happens per task inside `Runner._run_one`'s `except Exception`,

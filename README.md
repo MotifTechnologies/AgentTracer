@@ -10,6 +10,7 @@ code-exec sandbox, MCP client) — see `NOTICE` for attribution.
 
 ```bash
 uv sync
+cp .env.sample .env      # then fill in the keys it lists
 uv run agent-tracer run -f config/example.yaml
 uv run agent-tracer export -F sharegpt   # or: -F hf | -F grpo
 ```
@@ -21,6 +22,10 @@ uv run agent-tracer export -F sharegpt   # or: -F hf | -F grpo
   `mcp.include`/`mcp.exclude`. See `src/agent_tracer/mcp_servers/README.md`.
 - Sandbox: `environment.type: docker` runs code in an isolated container
   (no network, memory/pids caps).
+- Web tools: `tools.web: true` adds stirrup's `web_fetch` and `web_search`.
+  `web_search` needs a Brave Search key — `tools.brave_api_key` or
+  `BRAVE_API_KEY`. Without one the run refuses to start, because upstream
+  would otherwise drop `web_search` and hand the agent `web_fetch` alone.
 
 ## After an interrupted run
 

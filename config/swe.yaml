@@ -16,6 +16,13 @@ model:
   context_window_tokens: 262144
   timeout: 300
 
+tools:
+  # stirrup's built-in web_fetch / web_search. web_search needs a Brave Search
+  # key — set brave_api_key here (an `env:` reference or a literal) or export
+  # BRAVE_API_KEY. With `web: true` and no key the run refuses to start.
+  web: false
+  # brave_api_key: "env:BRAVE_API_KEY"
+
 agent:
   # A real repo takes exploring before editing; 60 was spent before the fix.
   max_turns: 100

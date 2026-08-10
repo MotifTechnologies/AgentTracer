@@ -17,6 +17,13 @@ model:
   how to contribute
   사례 기반(볼륨 날릴 뻔한 사례)
 
+tools:
+  # stirrup's built-in web_fetch / web_search. web_search needs a Brave Search
+  # key — set brave_api_key here (an `env:` reference or a literal) or export
+  # BRAVE_API_KEY. With `web: true` and no key the run refuses to start.
+  web: false
+  # brave_api_key: "env:BRAVE_API_KEY"
+
 agent:
   max_turns: 128
 

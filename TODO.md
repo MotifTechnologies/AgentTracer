@@ -1,17 +1,17 @@
 # TODO
 
-## soffice 서버는 이미지에 LibreOffice가 있어야 동작한다
+## soffice를 쓰려면 LibreOffice가 든 이미지가 있어야 한다
 
-`soffice` 서버는 `soffice --headless` 명령을 `SandboxAccess.exec`로 넘긴다. 즉
-LibreOffice가 **샌드박스 컨테이너 안에** 있어야 한다. `pdf`·`xlsx`가 바이트만 꺼내
-서버 프로세스에서 파싱하는 것과 다르다 — 그쪽 의존성(pypdf, openpyxl)은 순수 파이썬
-이라 PEP 723으로 해결되지만, LibreOffice는 시스템 바이너리라 uv/pip으로 설치할 수
-없다.
+`soffice` 서버는 `soffice --headless`를 `SandboxAccess.exec`로 넘긴다. 즉 LibreOffice가
+**샌드박스 컨테이너 안에** 있어야 한다. `pdf`·`xlsx`가 바이트만 꺼내 서버 프로세스에서
+파싱하는 것과 다르다 — 그쪽 의존성(pypdf, openpyxl)은 순수 파이썬이라 PEP 723으로
+해결되지만, LibreOffice는 시스템 바이너리라 uv/pip으로 설치할 수 없다.
 
-현재 `config/generate.yaml`은 `python:3.12-slim`을 쓰고 `mcp.include`에서 soffice를
-빼둔 상태라 문제가 드러나지 않는다. 문서 변환 시드를 만들 때 아래가 필요하다.
+이미지를 어디에 물리느냐는 더 이상 문제가 아니다. 태스크가 `docker_image`를 들고 오면
+그것이 config의 이미지를 대신하므로, 문서 변환 시드에 해당 이미지를 적어 넣으면 된다.
+세트마다 config를 나눌 필요는 없다. 남은 일은 그 이미지를 실제로 만드는 것뿐이다.
 
-- [ ] LibreOffice 포함 이미지 준비
+- [ ] LibreOffice 포함 이미지 빌드 및 레지스트리 등록
 
   ```dockerfile
   FROM python:3.12-slim
@@ -19,16 +19,20 @@ LibreOffice가 **샌드박스 컨테이너 안에** 있어야 한다. `pdf`·`xl
       libreoffice-writer libreoffice-calc && rm -rf /var/lib/apt/lists/*
   ```
 
-  전체 `libreoffice`는 1GB+, writer/calc만 400~600MB. 세트별로
-  `-c environment.image=...` 오버라이드하면 config를 새로 만들 필요는 없다.
+  전체 `libreoffice`는 1GB+, writer/calc만 400~600MB. 태스크마다 이미지를 받는 구조라
+  크기가 곧 pull 시간이다.
 
-- [ ] soffice를 쓰는 시드 작성 (문서 변환 도메인)
+- [ ] soffice를 쓰는 시드 작성 — 시드의 `docker_image`에 위 이미지를 지정
 
 ## 서버가 요구하는 샌드박스 바이너리가 선언되어 있지 않다
 
-위 문제의 일반형. soffice를 include한 채 slim 이미지로 돌리면 **런타임 툴 호출에서만**
-실패하고 기동 시점에는 안 걸린다. 궤적은 정상 종료하고 툴만 조용히 실패하므로,
-fail-fast 원칙(선언되지 않은 도구가 궤적에 영향을 주지 않는다)에서 벗어난다.
+위 문제의 일반형이고, 태스크마다 이미지가 달라지면서 오히려 커졌다. 예전에는 config의
+이미지 하나만 확인하면 됐지만, 지금은 시드 수백 줄에 흩어진 이미지가 각각 그 바이너리를
+갖고 있는지 사람이 맞춰볼 방법이 없다.
+
+soffice를 include한 채 그것이 없는 이미지로 돌리면 **런타임 툴 호출에서만** 실패하고
+기동 시점에는 안 걸린다. 궤적은 정상 종료하고 툴만 조용히 실패하므로, fail-fast
+원칙(선언되지 않은 도구가 궤적에 영향을 주지 않는다)에서 벗어난다.
 
 - [ ] 매니페스트에 필요 바이너리를 선언하고(`requires_binaries: ["soffice"]` 등),
       러너 기동 시 샌드박스에서 확인해 없으면 중단

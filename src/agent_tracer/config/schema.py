@@ -97,6 +97,11 @@ class EnvironmentConfig(StrictModel):
     type: str = "local"
     image: str | None = None
     working_dir: str = "/workspace"
+    # A constant working directory is a constant in every trajectory: train on
+    # them and the model learns `/workspace` as a fact about the world rather
+    # than as one path it was told. Randomised per task, the path stays
+    # something to read out of the task, not to recall.
+    randomize_working_dir: bool = True
     user: str | None = None  # in-sandbox user, where the backend has one
     shell_timeout: int = 300
     env_vars: list[str] = Field(default_factory=list)
@@ -110,6 +115,12 @@ class EnvironmentConfig(StrictModel):
 
     # Meaning the same thing across backends, expressed differently by each:
     # a sandbox that outlives its run, and something to attribute it to.
+    # Per-task images are pulled per task and never reused across tasks, so a
+    # run over a few hundred of them fills the disk. Only images a task brought
+    # are released; the image named in this config is shared by every task that
+    # has none of its own, and re-pulling it each time would be absurd.
+    release_task_images: bool = True
+
     ttl: float | None = None  # seconds; a backend may enforce it or label and sweep
     labels: dict[str, str] = Field(default_factory=dict)
 
@@ -122,6 +133,19 @@ class EnvironmentConfig(StrictModel):
             "Values take an 'env:VAR_NAME' reference (recommended) or a literal."
         ),
     )
+
+    # Plausible places work would live, so the varied path still reads as a
+    # real one. The suffix is what makes it unlearnable.
+    _WORKDIR_ROOTS = ("/workspace", "/srv/job", "/opt/run", "/data/task", "/home/agent/work")
+
+    def task_working_dir(self) -> str:
+        """The working directory for one task — randomised unless pinned."""
+        if not self.randomize_working_dir:
+            return self.working_dir
+        import secrets
+
+        root = secrets.choice(self._WORKDIR_ROOTS)
+        return f"{root}_{secrets.token_hex(3)}"
 
     def resolved_options(self) -> dict[str, str]:
         """`options` with its `env:` references resolved.
@@ -158,12 +182,19 @@ class ToolsConfig(StrictModel):
     """Built-in stirrup tools, enabled per run."""
 
     web: bool = False
-    brave_api_key: str | None = None  # env: reference or literal; web_search needs it
+    brave_api_key: str | None = Field(
+        default=None,
+        description=(
+            "Brave Search key for web_search. An 'env:VAR_NAME' reference "
+            "(recommended) or a literal. Falls back to $BRAVE_API_KEY."
+        ),
+    )
 
     def resolved_brave_key(self) -> str | None:
-        if self.brave_api_key is None:
-            return None
-        return resolve_env_ref(self.brave_api_key, field="tools.brave_api_key")
+        """The key, from config or the environment. None if neither has one."""
+        if self.brave_api_key is not None:
+            return resolve_env_ref(self.brave_api_key, field="tools.brave_api_key")
+        return os.environ.get("BRAVE_API_KEY") or None
 
 
 class RetryConfig(StrictModel):
@@ -173,6 +204,10 @@ class RetryConfig(StrictModel):
 
 class RunnerConfig(StrictModel):
     max_concurrency: int = 8
+    # Rollouts per task. >1 is how best-of-N / rejection-sampled SFT data is
+    # made: sample repeatedly, keep what passed. Each sample is a separate
+    # trajectory, checkpointed independently.
+    samples_per_task: int = 1
     task_timeout: float = 1800.0
     retry: RetryConfig = Field(default_factory=RetryConfig)
     checkpoint: bool = True
@@ -211,6 +246,17 @@ class RunConfig(StrictModel):
         self.model.resolved_api_key()
         if not self.model.reasoning_key:
             raise ConfigError("model.reasoning_key: required — refusing to run")
+        # Upstream drops web_search from the tool set when there is no key and
+        # says nothing: the agent then gets web_fetch alone, every trajectory in
+        # the run carries a tool set nobody asked for, and the run exits clean.
+        if self.tools.web and not self.tools.resolved_brave_key():
+            raise ConfigError(
+                "tools.web is on but no Brave Search key was found. Set "
+                "tools.brave_api_key (an 'env:VAR_NAME' reference or a literal) "
+                "or BRAVE_API_KEY in the environment — without it web_search is "
+                "silently dropped and only web_fetch reaches the agent. "
+                "Set tools.web: false if that is what you want."
+            )
         # `environment.type` is a str, so the registry is the only thing that
         # knows whether it names a backend. Left to `build_provider`, the first
         # check happens per task inside `Runner._run_one`'s `except Exception`,

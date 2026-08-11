@@ -1,0 +1,44 @@
+dataset:
+  name: custom
+  path: data/seeds/toolcall_workspace.jsonl
+
+model:
+  model_name: "moonshotai/Kimi-K3"
+  base_url: "http://127.0.0.1:8080/v1"
+  api_key: "env:VLLM_API_KEY"
+  reasoning_key: "reasoning"
+  max_tokens: 8192
+  context_window_tokens: 262144
+  timeout: 300
+
+tools:
+  # stirrup's built-in web_fetch / web_search. web_search needs a Brave Search
+  # key — set brave_api_key here (an `env:` reference or a literal) or export
+  # BRAVE_API_KEY. With `web: true` and no key the run refuses to start.
+  web: false
+  # brave_api_key: "env:BRAVE_API_KEY"
+
+agent:
+  max_turns: 16
+
+environment:
+  type: local
+  shell_timeout: 60
+
+mcp:
+  # context7 needs the network; pdf/xlsx/soffice have no matching seed files yet.
+  include: ["filesystem", "sqlite", "calculator", "time"]
+
+runner:
+  # Rollouts per task. >1 for best-of-N / rejection sampling: sample
+  # repeatedly, keep what passed. Each sample is checkpointed separately.
+  samples_per_task: 1
+  max_concurrency: 6
+  task_timeout: 600
+  retry:
+    max_attempts: 2
+    backoff_base: 2.0
+  checkpoint: true
+
+output:
+  path: results/pilot

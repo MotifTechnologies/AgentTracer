@@ -1,0 +1,56 @@
+# Coding domain. Each SWE instance ships its own image — the toolchain and
+# dependencies differ per repo — so `environment.image` here is only the
+# fallback for a seed that has none.
+#
+#   uv run agent-tracer run -f config/swe.yaml
+dataset:
+  name: swebench_local
+  path: data/seeds/swe_coding.jsonl
+
+model:
+  model_name: "moonshotai/Kimi-K3"
+  base_url: "http://127.0.0.1:8080/v1"
+  api_key: "env:VLLM_API_KEY"
+  reasoning_key: "reasoning"
+  max_tokens: 8192
+  context_window_tokens: 262144
+  timeout: 300
+
+tools:
+  # stirrup's built-in web_fetch / web_search. web_search needs a Brave Search
+  # key — set brave_api_key here (an `env:` reference or a literal) or export
+  # BRAVE_API_KEY. With `web: true` and no key the run refuses to start.
+  web: false
+  # brave_api_key: "env:BRAVE_API_KEY"
+
+agent:
+  # A real repo takes exploring before editing; 60 was spent before the fix.
+  max_turns: 100
+
+environment:
+  type: docker
+  image: python:3.12-slim
+  # Builds and test suites here are minutes, not seconds: a gradle or cargo
+  # run that gets killed at 300s reads to the agent as a broken repo.
+  shell_timeout: 1200
+  # Required here: 200 instances across 15 languages pull an image each, and
+  # they are never reused between tasks. Released after the last sample of a
+  # task, so siblings do not re-pull it.
+  release_task_images: true
+
+mcp:
+  include: ["filesystem", "sqlite", "calculator", "time"]
+
+runner:
+  samples_per_task: 1
+  # Lower than the other sets: each task pulls its own image, so concurrency
+  # here costs disk and pull bandwidth rather than just GPU.
+  max_concurrency: 32
+  task_timeout: 3600
+  retry:
+    max_attempts: 2
+    backoff_base: 2.0
+  checkpoint: true
+
+output:
+  path: results/swe

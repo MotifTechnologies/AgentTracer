@@ -1,0 +1,57 @@
+# Full-scale generation. Override dataset.path / output.path per seed set:
+#   uv run agent-tracer run -f config/generate.yaml \
+#     -c dataset.path=data/seeds/<set>.jsonl -c output.path=results/<set>
+dataset:
+  name: custom
+  path: data/seeds/toolcall_workspace.jsonl
+
+model:
+  model_name: "moonshotai/Kimi-K3"
+  base_url: "http://127.0.0.1:8080/v1"
+  api_key: "env:VLLM_API_KEY"
+  reasoning_key: "reasoning"
+  max_tokens: 8192
+  context_window_tokens: 262144
+  timeout: 300
+
+tools:
+  # stirrup's built-in web_fetch / web_search. web_search needs a Brave Search
+  # key — set brave_api_key here (an `env:` reference or a literal) or export
+  # BRAVE_API_KEY. With `web: true` and no key the run refuses to start.
+  web: false
+  # brave_api_key: "env:BRAVE_API_KEY"
+
+agent:
+  max_turns: 128
+
+environment:
+  # Per-task container: the local backend shares one host filesystem, so a
+  # concurrent task can see another's files. randomize_working_dir is on by
+  # default, so the path differs per task rather than being learned as /workspace.
+  type: docker
+  image: python:3.12-slim
+  shell_timeout: 60
+  # A task that brings its own image (SWE instances do) has it dropped once its
+  # last sample finishes: a few hundred of them would otherwise fill the disk.
+  # The image above is shared by every task without one and is never released.
+  release_task_images: true
+
+mcp:
+  # context7 needs the network; soffice has no matching seed files yet.
+  include: ["filesystem", "sqlite", "xlsx", "pdf", "calculator", "time"]
+
+runner:
+  # Rollouts per task. >1 for best-of-N / rejection sampling: sample
+  # repeatedly, keep what passed. Each sample is checkpointed separately.
+  samples_per_task: 4
+  # Raise once the vLLM saturation point is known; watch the tok/s in the bar.
+  max_concurrency: 32
+  task_timeout: 1800
+  retry:
+    max_attempts: 2
+    backoff_base: 2.0
+  # Re-running the same command skips tasks already in results.jsonl.
+  checkpoint: true
+
+output:
+  path: results/generate

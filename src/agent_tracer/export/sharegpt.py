@@ -39,24 +39,37 @@ def _to_text(content: Any) -> str | None:
     return str(content)
 
 
+#: Every message carries the same keys, null where a turn has no use for one.
+#: Consumers validate against a schema that requires all of them — a system
+#: turn without `tool_calls: null` is a schema violation, not a tidier record.
+_MESSAGE_KEYS = ("role", "content", "tool_calls", "thinking", "tool_call_id")
+
+
+def _message(role: str, **fields: Any) -> dict[str, Any]:
+    message = dict.fromkeys(_MESSAGE_KEYS)
+    message["role"] = role
+    message.update(fields)
+    return message
+
+
 def _conversations(traj: dict[str, Any]) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = []
     system_prompt = traj.get("metadata", {}).get("system_prompt")
     if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
+        messages.append(_message("system", content=system_prompt))
 
     pending_thinking: list[str] = []
     for event in traj["events"]:
         etype, data = event["event_type"], event["data"]
         if etype == "task":
             content = data.get("content")
-            messages.append({"role": "user", "content": _to_text(content)})
+            messages.append(_message("user", content=_to_text(content)))
         elif etype == "user_message":
-            messages.append({"role": "user", "content": _to_text(data.get("content"))})
+            messages.append(_message("user", content=_to_text(data.get("content"))))
         elif etype == "thinking":
             pending_thinking.append(data["content"])
         elif etype == "model_response":
-            msg: dict[str, Any] = {"role": "assistant", "content": data.get("content")}
+            msg = _message("assistant", content=data.get("content"))
             tool_calls = [
                 {
                     "id": tc.get("tool_call_id"),
@@ -72,19 +85,18 @@ def _conversations(traj: dict[str, Any]) -> list[dict[str, Any]]:
                 }
                 for tc in data.get("tool_calls", [])
             ]
-            if tool_calls:
-                msg["tool_calls"] = tool_calls
+            msg["tool_calls"] = tool_calls or None
             if pending_thinking:
                 msg["thinking"] = "\n\n".join(pending_thinking)
                 pending_thinking = []
             messages.append(msg)
         elif etype == "tool_result":
             messages.append(
-                {
-                    "role": "tool",
-                    "content": _to_text(data.get("content")),
-                    "tool_call_id": data.get("tool_call_id"),
-                }
+                _message(
+                    "tool",
+                    content=_to_text(data.get("content")),
+                    tool_call_id=data.get("tool_call_id"),
+                )
             )
     return messages
 
@@ -120,6 +132,7 @@ def trajectory_to_record(
         },
         "extra": {
             "task": traj["task_id"],
+            "sample_idx": traj.get("sample_idx", 0),
             "attempt": result.get("attempt", 1),
             "steps": steps,
             "usage": {
@@ -141,6 +154,66 @@ def trajectory_to_record(
     }
 
 
+class UngradedTrajectoryError(ValueError):
+    """Raised when a selection option needs a verdict the trajectory lacks."""
+
+
+def _verdict(record: dict[str, Any]) -> bool:
+    """The recorded correctness, or an error if there is none.
+
+    Selecting on correctness when correctness is unknown would quietly keep or
+    drop records on a coin flip, so an ungraded trajectory aborts the export
+    rather than being guessed at.
+    """
+    evaluation = record["extra"].get("evaluation") or {}
+    correct = evaluation.get("correct")
+    if correct is None:
+        raise UngradedTrajectoryError(
+            f"{record['extra']['task']} (sample {record['extra']['sample_idx']}): "
+            "no correctness verdict — --require-correct/--best-per-task cannot "
+            "select on it. Export without those options, or use a dataset that grades."
+        )
+    return bool(correct)
+
+
+def _cost(record: dict[str, Any]) -> tuple[int, int, int]:
+    """Rank successful samples: fewest steps, then fewest tokens, then stable."""
+    return (
+        record["extra"]["steps"],
+        record["extra"]["usage"]["total_tokens"],
+        record["extra"]["sample_idx"],
+    )
+
+
+def select_records(
+    records: list[dict[str, Any]],
+    *,
+    require_correct: bool = False,
+    best_per_task: bool = False,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Apply rejection sampling. Returns (kept, stats)."""
+    if not (require_correct or best_per_task):
+        return records, {}
+
+    correct = [r for r in records if _verdict(r)]
+    stats = {"dropped_incorrect": len(records) - len(correct)}
+
+    if not best_per_task:
+        return correct, stats
+
+    # One record per task: the shortest correct rollout. A task with no correct
+    # rollout has nothing to keep, and is counted rather than passed through.
+    best: dict[str, dict[str, Any]] = {}
+    for record in correct:
+        task = record["extra"]["task"]
+        if task not in best or _cost(record) < _cost(best[task]):
+            best[task] = record
+    tasks_seen = {r["extra"]["task"] for r in records}
+    stats["dropped_extra_samples"] = len(correct) - len(best)
+    stats["tasks_without_a_correct_sample"] = len(tasks_seen) - len(best)
+    return [best[k] for k in sorted(best)], stats
+
+
 def load_records(
     trajectory_dir: Path,
     *,
@@ -149,8 +222,10 @@ def load_records(
     subset: str | None = None,
     category: str | None = None,
     include_errors: bool = False,
-) -> tuple[list[dict[str, Any]], int]:
-    """Convert every ``*.traj.json`` into a record. Returns (records, skipped)."""
+    require_correct: bool = False,
+    best_per_task: bool = False,
+) -> tuple[list[dict[str, Any]], int, dict[str, int]]:
+    """Convert every ``*.traj.json`` into a record. Returns (records, skipped, stats)."""
     records: list[dict[str, Any]] = []
     skipped = 0
     for path in sorted(trajectory_dir.glob("*.traj.json")):
@@ -161,7 +236,10 @@ def load_records(
         records.append(
             trajectory_to_record(traj, name=name, split=split, subset=subset, category=category)
         )
-    return records, skipped
+    records, stats = select_records(
+        records, require_correct=require_correct, best_per_task=best_per_task
+    )
+    return records, skipped, stats
 
 
 def export_directory(
@@ -170,7 +248,7 @@ def export_directory(
     **kwargs: Any,
 ) -> tuple[int, int]:
     """Write ShareGPT records as JSONL. Returns (written, skipped)."""
-    records, skipped = load_records(trajectory_dir, **kwargs)
+    records, skipped, _ = load_records(trajectory_dir, **kwargs)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as out:
         for record in records:

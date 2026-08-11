@@ -45,6 +45,11 @@ class TokenTotals:
 @dataclass
 class Trajectory:
     task_id: str
+    # Which rollout of that task this is. Sampling the same task repeatedly is
+    # how best-of-N / rejection-sampled SFT data gets made, so the index has to
+    # reach the filename and the exported record — otherwise sample 2 silently
+    # overwrites sample 1.
+    sample_idx: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
     events: list[Event] = field(default_factory=list)
     result: dict[str, Any] = field(default_factory=dict)
@@ -71,6 +76,7 @@ class Trajectory:
         return {
             "trajectory_format": TRAJECTORY_FORMAT,
             "task_id": self.task_id,
+            "sample_idx": self.sample_idx,
             "metadata": {
                 **self.metadata,
                 "timestamp_start": self.timestamp_start,
@@ -82,10 +88,11 @@ class Trajectory:
         }
 
     def save(self, directory: Path) -> Path:
-        """Atomically write ``<task_id>.traj.json`` (temp file + rename)."""
+        """Atomically write ``<task_id>[.s<n>].traj.json`` (temp file + rename)."""
         directory.mkdir(parents=True, exist_ok=True)
         safe_id = self.task_id.replace(os.sep, "_")
-        path = directory / f"{safe_id}.traj.json"
+        suffix = f".s{self.sample_idx}" if self.sample_idx else ""
+        path = directory / f"{safe_id}{suffix}.traj.json"
         tmp = path.with_suffix(".tmp")
         tmp.write_text(
             json.dumps(self.to_dict(), ensure_ascii=False, indent=2, default=str),

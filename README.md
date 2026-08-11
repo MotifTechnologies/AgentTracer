@@ -10,6 +10,7 @@ code-exec sandbox, MCP client) — see `NOTICE` for attribution.
 
 ```bash
 uv sync
+cp .env.sample .env      # then fill in the keys it lists
 uv run agent-tracer run -f config/example.yaml
 uv run agent-tracer export -F sharegpt   # or: -F hf | -F grpo
 ```
@@ -21,9 +22,38 @@ uv run agent-tracer export -F sharegpt   # or: -F hf | -F grpo
   `mcp.include`/`mcp.exclude`. See `src/agent_tracer/mcp_servers/README.md`.
 - Sandbox: `environment.type: docker` runs code in an isolated container
   (no network, memory/pids caps).
+- Web tools: `tools.web: true` adds stirrup's `web_fetch` and `web_search`.
+  `web_search` needs a Brave Search key — `tools.brave_api_key` or
+  `BRAVE_API_KEY`. Without one the run refuses to start, because upstream
+  would otherwise drop `web_search` and hand the agent `web_fetch` alone.
+
+## After an interrupted run
+
+Containers are torn down, and images a task brought are released, when a run
+ends normally. A run that is killed does neither, so both are left behind —
+after a set whose tasks ship their own images, that is easily 100 GB.
+
+```bash
+docker ps -aq --filter status=exited | xargs -r docker rm
+docker images --format '{{.Repository}}:{{.Tag}}' | grep '^swerebenchv2/' | xargs -r docker rmi
+```
+
+Filter rather than pruning: `docker system prune -a` also removes the sandbox
+base image and anything else on the host that is not currently running.
+
+Re-running the same command resumes — finished samples are skipped — so
+cleaning up first costs nothing.
 
 ## Development
 
 ```bash
 uv run pytest tests/
 ```
+
+## License
+
+Apache License 2.0 — see `LICENSE`.
+
+`src/agent_tracer/models/client.py` adapts code from
+[Stirrup](https://github.com/ArtificialAnalysis/Stirrup) and remains under the
+MIT License; `NOTICE` carries that attribution.

@@ -29,3 +29,6 @@ data/seeds/*.jsonl
 # Seed-data preparation is the user's job, not this framework's
 DATA_BUILDER/
 data/
+
+# Generated report deck
+*.pptx

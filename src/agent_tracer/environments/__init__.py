@@ -50,6 +50,8 @@ class _Backend(Protocol):
     def build(self, config: EnvironmentConfig, *, task_id: str | None) -> Any: ...
     def describe(self, config: EnvironmentConfig, provider: Any) -> dict[str, str | None]: ...
     def attach(self, sandbox_id: str, options: dict[str, str]) -> SandboxAccess: ...
+    # Optional: backends with no image store simply do not define it.
+    def release_image(self, image: str) -> bool: ...
 
 
 def _load(env_type: str) -> _Backend:
@@ -115,6 +117,23 @@ def attach(env_type: str, sandbox_id: str, options: dict[str, str] | None = None
             declare `sandbox_options` in their manifest.
     """
     return _load(env_type).attach(sandbox_id, options or {})
+
+
+def release_image(env_type: str, image: str) -> bool:
+    """Drop a task's image from the local store. False if the backend cannot.
+
+    Best-effort by nature: another task may still hold the image, and the
+    daemon refuses in that case. Never fatal — a run must not fail because a
+    cleanup did not happen.
+    """
+    backend = _load(env_type)
+    hook = getattr(backend, "release_image", None)
+    if hook is None:
+        return False
+    try:
+        return bool(hook(image))
+    except Exception:  # noqa: BLE001 - cleanup is never worth failing a run over
+        return False
 
 
 def from_env(environ: dict[str, str] | None = None) -> tuple[SandboxAccess, str]:

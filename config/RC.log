@@ -1,0 +1,79 @@
+{
+    "deploymentEnvironmentVariables": {},
+    "deploymentTemplateReference": "azureml://registries/motif-12b-ipp/deploymenttemplates/motif-deployment-template-2/versions/5",
+    "detailStatus": "Validation_Failed",
+    "environmentReference": null,
+    "inferencePath": "/v1/chat/completions",
+    "inferencePayload": "{\"model\": \"Motif-2-12.7B-Reasoning\", \"messages\": [{\"role\": \"user\", \"content\": \"What is 2+2? Answer briefly.\"}], \"max_tokens\": 4096, \"temperature\": 0}",
+    "inferenceResponse": null,
+    "isMonetizationEnabled": true,
+    "isOfferTagsEnabled": true,
+    "isStreaming": null,
+    "marketplace": {
+        "offerId": "motiftech-motif-2-12-7b-reasoning",
+        "offerName": "Motif-2-12-7B-Reasoning_61f3a59ea7c7",
+        "planId": "motif-2-12-7b-reasoning-plan",
+        "promotedAssetOfferName": null,
+        "termId": "n7ja87drquhy"
+    },
+    "modelAssetReference": "azureml://registries/motif-12b-ipp/models/Motif-2-12.7B-Reasoning/versions/2",
+    "modelName": "Motif-2-12.7B-Reasoning",
+    "publisherName": "MotifTechnologies",
+    "rolloutProgress": [],
+    "skUs": [
+        "Standard_NC80adis_H100_v5"
+    ],
+    "sku": "Standard_NC80adis_H100_v5",
+    "stage": "Validation",
+    "stagingPreviewLink": {
+        "aiFoundry": "https://ai.azure.com/explore/models/Motif-2-12.7B-Reasoning/version/Snapshot_5/registry/azureml-Motif-stg-p",
+        "mlStudio": "https://ml.azure.com/registries/azureml-Motif-stg-p/models/Motif-2-12.7B-Reasoning/version/Snapshot_5"
+    },
+    "status": "Failed",
+    "systemData": {
+        "createdAt": "2026-08-07T13:26:29.6087294Z",
+        "createdBy": "a717006c-f8c8-4be3-8b6c-8a7937e8cc6a",
+        "createdByType": "User",
+        "lastModifiedAt": "2026-08-07T17:05:03.6872483Z",
+        "lastModifiedByType": "User"
+    },
+    "validationResult": [
+        {
+            "createdTime": "2026-08-07T13:29:26Z",
+            "deploymentTemplateAssetReference": null,
+            "environmentReference": "VllmEnv",
+            "id": "MOVS_50f3e9dd-8aad-474e-bc31-29422c190f08",
+            "message": "No Critical Risk Vulnerabilities Found",
+            "sku": null,
+            "status": "Completed",
+            "tags": {},
+            "type": "IMAGE_VULNERABILITY",
+            "updatedTime": "2026-08-07T13:36:16Z"
+        },
+        {
+            "createdTime": "2026-08-07T13:30:12Z",
+            "deploymentTemplateAssetReference": "",
+            "environmentReference": "",
+            "id": "99dd65ba-fe09-43db-88e8-35cd822d7388",
+            "message": "Deployment failed. Please check with Microsoft support team.",
+            "sku": "Standard_NC80adis_H100_v5",
+            "status": "Failed",
+            "tags": {},
+            "type": "MAAP_DEPLOYMENT",
+            "updatedTime": "2026-08-07T17:03:31Z"
+        },
+        {
+            "createdTime": "2026-08-07T13:30:12Z",
+            "deploymentTemplateAssetReference": "",
+            "environmentReference": "",
+            "id": "8b3e979c-c138-4108-8427-a4a8362c33bf",
+            "message": "Waiting for deployment to complete",
+            "sku": "Standard_NC80adis_H100_v5",
+            "status": "NotStarted",
+            "tags": {},
+            "type": "MAAP_INFERENCING",
+            "updatedTime": "2026-08-07T13:30:12Z"
+        }
+    ],
+    "version": "5"
+}

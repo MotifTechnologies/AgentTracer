@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections import Counter
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,23 @@ class _TPSColumn(ProgressColumn):
 
     def render(self, task) -> Text:
         return Text(f"{self._counter.tps():,.0f} tok/s", style="cyan")
+
+
+def describe_exception(exc: BaseException, *, depth: int = 0) -> str:
+    """A message that names the actual failure.
+
+    ``str()`` on an ExceptionGroup is only "unhandled errors in a TaskGroup
+    (1 sub-exception)" — the cause is in ``exceptions``. stirrup runs its tools
+    in a TaskGroup, so every tool-side failure arrived wearing that wrapper and
+    the results file recorded nothing usable about it.
+    """
+    if isinstance(exc, BaseExceptionGroup) and exc.exceptions and depth < 4:
+        inner = ", ".join(
+            describe_exception(sub, depth=depth + 1) for sub in exc.exceptions[:3]
+        )
+        return f"{type(exc).__name__}[{inner}]"
+    text = str(exc).strip()
+    return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
 
 
 class _TokenCounter:
@@ -95,7 +113,9 @@ class Runner:
             },
         }
 
-    def _completed_task_ids(self) -> set[str]:
+    def _completed_samples(self) -> set[tuple[str, int]]:
+        """Which (task, sample) pairs already succeeded — keyed on both, so a
+        resumed run does not mistake sample 0 for the whole task."""
         if not (self.config.runner.checkpoint and self.results_path.is_file()):
             return set()
         done = set()
@@ -103,15 +123,19 @@ class Runner:
             if line.strip():
                 row = json.loads(line)
                 if row.get("exit_status") != "error":
-                    done.add(row["task_id"])
+                    done.add((row["task_id"], row.get("sample_idx", 0)))
         return done
 
-    async def _run_one(self, task: Task, counter: _TokenCounter) -> dict[str, Any]:
+    async def _run_one(
+        self, task: Task, sample_idx: int, counter: _TokenCounter
+    ) -> dict[str, Any]:
         retry = self.config.runner.retry
         last_error: str | None = None
 
         for attempt in range(1, retry.max_attempts + 1):
-            trajectory = Trajectory(task_id=task.task_id, metadata=self._base_metadata())
+            trajectory = Trajectory(
+                task_id=task.task_id, sample_idx=sample_idx, metadata=self._base_metadata()
+            )
             try:
                 result = await asyncio.wait_for(
                     self.orchestrator.run_task(task, trajectory, on_tokens=counter.on_tokens),
@@ -131,6 +155,7 @@ class Runner:
                     trajectory.save(self.trajectory_dir)
                 return {
                     "task_id": task.task_id,
+                    "sample_idx": sample_idx,
                     "exit_status": result["exit_status"],
                     "submission": result["submission"],
                     "correct": evaluation.correct,
@@ -140,7 +165,7 @@ class Runner:
             except (TimeoutError, asyncio.TimeoutError):
                 last_error = f"task timeout after {self.config.runner.task_timeout}s"
             except Exception as e:  # noqa: BLE001 — record and retry per policy
-                last_error = f"{type(e).__name__}: {e}"
+                last_error = describe_exception(e)
 
             trajectory.add_event("error", {"message": last_error, "attempt": attempt})
             if attempt < retry.max_attempts:
@@ -151,6 +176,7 @@ class Runner:
             trajectory.save(self.trajectory_dir)
         return {
             "task_id": task.task_id,
+            "sample_idx": sample_idx,
             "exit_status": "error",
             "submission": None,
             "correct": None,
@@ -158,18 +184,50 @@ class Runner:
             "attempt": retry.max_attempts,
         }
 
+    @staticmethod
+    def _task_image(task: Task) -> str | None:
+        """The image this task brought, if any. Config images are not released."""
+        return (task.metadata or {}).get("docker_image")
+
+    async def _release_when_last(
+        self, task: Task, remaining: Counter, lock: asyncio.Lock
+    ) -> None:
+        """Drop a task's image once its final rollout is done.
+
+        Counted rather than dropped eagerly: with samples_per_task > 1 the
+        siblings share the image, and removing it after the first would make
+        every other sample pull it again. Runs after the rollout returns, so
+        the container is already torn down.
+        """
+        image = self._task_image(task)
+        if not image or not self.config.environment.release_task_images:
+            return
+        async with lock:
+            remaining[image] -= 1
+            if remaining[image] > 0:
+                return
+        from agent_tracer.environments import release_image
+
+        await asyncio.to_thread(release_image, self.config.environment.type, image)
+
     async def run(self) -> list[dict[str, Any]]:
         dataset = get_dataset(self.config.dataset.name, self.config.dataset.path)
         tasks = dataset.load(self.config.dataset.split, self.config.dataset.limit)
 
-        done_ids = self._completed_task_ids()
-        pending = [t for t in tasks if t.task_id not in done_ids]
+        samples = self.config.runner.samples_per_task
+        done = self._completed_samples()
+        wanted = [(t, i) for t in tasks for i in range(samples)]
+        pending = [(t, i) for t, i in wanted if (t.task_id, i) not in done]
 
         self.config.output.path.mkdir(parents=True, exist_ok=True)
         counter = _TokenCounter()
         semaphore = asyncio.Semaphore(self.config.runner.max_concurrency)
         results: list[dict[str, Any]] = []
         results_lock = asyncio.Lock()
+        remaining_by_image: Counter = Counter(
+            image for task, _ in pending if (image := self._task_image(task))
+        )
+        image_lock = asyncio.Lock()
 
         progress = Progress(
             TextColumn("[bold]agent-tracer[/bold]"),
@@ -180,18 +238,26 @@ class Runner:
             TextColumn("ETA"),
             TimeRemainingColumn(),
             transient=False,
+            # rich estimates speed from the last 30 seconds by default. A task
+            # that takes minutes never advances inside that window, so the
+            # estimate is always empty and the ETA reads -:--:-- for the whole
+            # run. An hour of history covers the slowest task here.
+            speed_estimate_period=3600,
         )
-        bar = progress.add_task("run", total=len(tasks), completed=len(done_ids))
+        bar = progress.add_task(
+            "run", total=len(wanted), completed=len(wanted) - len(pending)
+        )
 
-        async def worker(task: Task) -> None:
+        async def worker(task: Task, sample_idx: int) -> None:
             async with semaphore:
-                row = await self._run_one(task, counter)
+                row = await self._run_one(task, sample_idx, counter)
             async with results_lock:
                 results.append(row)
                 with self.results_path.open("a", encoding="utf-8") as f:
                     f.write(json.dumps(row, ensure_ascii=False) + "\n")
             progress.advance(bar)
+            await self._release_when_last(task, remaining_by_image, image_lock)
 
         with progress:
-            await asyncio.gather(*(worker(t) for t in pending))
+            await asyncio.gather(*(worker(t, i) for t, i in pending))
         return results

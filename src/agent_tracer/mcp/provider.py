@@ -18,6 +18,10 @@ import asyncio
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
+from agent_tracer.mcp import _mcp2_compat
+
+_mcp2_compat.apply()  # must precede the stirrup import below
+
 from stirrup.tools.mcp import MCPConfig, MCPToolProvider
 
 if TYPE_CHECKING:
@@ -54,7 +58,9 @@ class TimeoutMCPToolProvider(MCPToolProvider):
                 "a cold cache — warm it, or raise the manifest's startup_timeout_s."
             ) from e
 
-    async def call_tool(self, server: str, tool_name: str, arguments: dict[str, Any]) -> Any:
+    async def call_tool(
+        self, server: str, tool_name: str, arguments: dict[str, Any]
+    ) -> Any:
         manifest = self._manifests.get(server)
         timeout = manifest.call_timeout_s if manifest else None
         try:

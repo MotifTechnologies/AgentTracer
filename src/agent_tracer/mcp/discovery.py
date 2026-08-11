@@ -105,7 +105,9 @@ def discover_mcp_servers(config: MCPDiscoveryConfig) -> dict[str, MCPManifest]:
         import json
 
         try:
-            manifest = MCPManifest.model_validate(json.loads(manifest_path.read_text("utf-8")))
+            manifest = MCPManifest.model_validate(
+                json.loads(manifest_path.read_text("utf-8"))
+            )
         except (ValidationError, json.JSONDecodeError) as e:
             raise ConfigError(f"mcp: invalid manifest {manifest_path}:\n{e}") from e
         if manifest.name != child.name:
@@ -236,7 +238,9 @@ def sandbox_env(
     return {k: v for k, v in values.items() if v}
 
 
-def _sandbox_for(manifest: MCPManifest, sandbox: dict[str, str] | None) -> dict[str, str]:
+def _sandbox_for(
+    manifest: MCPManifest, sandbox: dict[str, str] | None
+) -> dict[str, str]:
     """This task's sandbox, as much of it as this server has asked for."""
     if not sandbox:
         return {}
@@ -259,13 +263,25 @@ def build_stirrup_mcp_config(
     a backend's credentials go, so only a manifest that declares
     `sandbox_options` is given it.
     """
-    from stirrup.tools.mcp import MCPConfig, StdioServerConfig, StreamableHttpServerConfig
+    from agent_tracer.mcp import _mcp2_compat
+
+    _mcp2_compat.apply()  # must precede the stirrup import below
+
+    from stirrup.tools.mcp import (
+        MCPConfig,
+        StdioServerConfig,
+        StreamableHttpServerConfig,
+    )
 
     servers: dict[str, Any] = {}
     for name, m in manifests.items():
         if m.transport == "stdio":
             env = {
-                var: (resolve_env_ref(val, field=f"mcp[{name}].env.{var}") if val.startswith("env:") else val)
+                var: (
+                    resolve_env_ref(val, field=f"mcp[{name}].env.{var}")
+                    if val.startswith("env:")
+                    else val
+                )
                 for var, val in m.env.items()
             }
             # Manifest last: a server that wants a different sandbox is allowed
@@ -278,7 +294,9 @@ def build_stirrup_mcp_config(
             # add its own.
             declared = env.get("PYTHONPATH")
             env["PYTHONPATH"] = (
-                f"{_package_path()}{os.pathsep}{declared}" if declared else _package_path()
+                f"{_package_path()}{os.pathsep}{declared}"
+                if declared
+                else _package_path()
             )
             servers[name] = StdioServerConfig(
                 command=m.command,
@@ -288,7 +306,11 @@ def build_stirrup_mcp_config(
             )
         else:
             headers = {
-                key: (resolve_env_ref(val, field=f"mcp[{name}].headers.{key}") if val.startswith("env:") else val)
+                key: (
+                    resolve_env_ref(val, field=f"mcp[{name}].headers.{key}")
+                    if val.startswith("env:")
+                    else val
+                )
                 for key, val in m.headers.items()
             }
             servers[name] = StreamableHttpServerConfig(

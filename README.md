@@ -8,7 +8,7 @@ code-exec sandbox, MCP client) — see `NOTICE` for attribution.
 
 ## How it works
 
-![One task, end to end](docs/images/agent-tracer-overall.png)
+![One task, end to end](resource/agent-tracer-overall.png)
 
 A task gets its own sandbox, and two things reach into it. `code_exec` runs
 inside it. The sandbox-bound MCP servers — `filesystem`, `sqlite`, `pdf`,
@@ -18,12 +18,16 @@ for the life of the agent. Which sandbox is this task's reaches them as
 `AGENT_TRACER_*` environment variables: a manifest is read once at startup and
 cannot name a sandbox that does not exist yet.
 
-![The reasoning loop](docs/images/agent-tracer-loop.png)
+![The reasoning loop](resource/agent-tracer-loop.png)
 
 One model turn emits a sequence of blocks — reasoning, text, tool calls — and
-the recorder writes each of them as a trajectory event. The loop ends when the
-model calls `submit`, or when `max_turns` runs out and the trajectory is closed
-with `exit_status: max_turns`.
+the recorder writes each of them as a trajectory event. A turn that calls no
+tool does not end the run: the loop appends the message and asks the model to
+continue. It ends on a `submit` that succeeded, or when `max_turns` runs out and
+the trajectory is closed with `exit_status: max_turns`.
+
+Both diagrams are pages of `resource/agent-tracer.drawio`, which the PNGs
+beside it are exported from.
 
 ## Quick start
 

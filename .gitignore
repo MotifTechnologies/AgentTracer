@@ -1,9 +1,11 @@
 # Internal documents — never commit (government project docs, internal specs)
 confidential/
 
-# Secrets
+# Secrets. The sample is the one .env-shaped file that must stay tracked:
+# it is what `cp .env.sample .env` in the README copies.
 .env
 .env.*
+!.env.sample
 
 # Python / uv
 __pycache__/
@@ -22,13 +24,16 @@ build/
 results/
 *.traj.json
 
-# Generated seed corpora (regenerate via DATA_BUILDER/); manifests stay tracked
-data/seeds/*.jsonl
+# Seed corpora are generated (via DATA_BUILDER/, the user's job — not this
+# framework's); only small tracked samples ship with the repo. `data/*` with
+# re-included `data/seeds` rather than a bare `data/`: git does not descend
+# into an ignored directory, so a negation under one never fires — the old
+# blanket rule silently killed the sample exception.
+data/*
+!data/seeds
+data/seeds/*
 !data/seeds/*sample*.jsonl
-
-# Seed-data preparation is the user's job, not this framework's
 DATA_BUILDER/
-data/
 
 # Generated report deck
 *.pptx

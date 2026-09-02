@@ -5,7 +5,9 @@
 #   uv run agent-tracer run -f config/swe.yaml
 dataset:
   name: swebench_local
-  path: data/seeds/swe_coding.jsonl
+  # The tracked sample, so this config runs from a fresh clone. Point it at a
+  # full instance set for a real run — corpora live untracked in data/seeds/.
+  path: data/seeds/swebench_local_sample.jsonl
 
 model:
   model_name: "moonshotai/Kimi-K3"

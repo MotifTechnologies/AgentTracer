@@ -9,6 +9,7 @@
   "args": ["run", "--quiet", "server.py"],
   "env": {},
   "sandbox_options": true,
+  "requires_binaries": ["soffice"],
   "startup_timeout_s": 15,
   "call_timeout_s": 180,
   "tools": [

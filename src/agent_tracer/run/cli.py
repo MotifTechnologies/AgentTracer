@@ -34,7 +34,14 @@ def run(config_path: str, overrides: tuple[str, ...]) -> None:
 
     from agent_tracer.run.runner import Runner
 
-    results = asyncio.run(Runner(config).run())
+    try:
+        results = asyncio.run(Runner(config).run())
+    except ConfigError as e:
+        # A run-fatal configuration problem surfaced only once a sandbox was
+        # up — a shared image missing a server's binary. Same class of error
+        # as a bad config file, reported the same way.
+        click.secho(f"config error: {e}", fg="red", err=True)
+        sys.exit(2)
 
     total = len(results)
     submitted = sum(1 for r in results if r["exit_status"] == "submitted")

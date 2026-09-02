@@ -93,6 +93,40 @@ class TestDiscovery:
         assert "echo" in manifests
 
 
+class TestRequiresBinaries:
+    """A server that execs in the sandbox declares what must be there, so a
+    short image is refused before the agent runs instead of the tool quietly
+    failing mid-trajectory."""
+
+    def test_stdio_declares_and_parses(self, tmp_path):
+        _server(tmp_path, "alpha", requires_binaries=["soffice"])
+        manifest = discover_mcp_servers(_cfg(tmp_path))["alpha"]
+        assert manifest.requires_binaries == ["soffice"]
+
+    def test_default_is_empty(self, tmp_path):
+        _server(tmp_path, "alpha")
+        assert discover_mcp_servers(_cfg(tmp_path))["alpha"].requires_binaries == []
+
+    def test_http_is_refused_even_empty(self, tmp_path):
+        """An http server has no sandbox to reach — same key-not-contents rule
+        as headers on stdio."""
+        _server(
+            tmp_path, "web", transport="http", url="https://example.com/mcp",
+            requires_binaries=[],
+        )
+        with pytest.raises(ConfigError, match="requires_binaries"):
+            discover_mcp_servers(_cfg(tmp_path))
+
+    def test_a_name_with_shell_in_it_is_refused(self, tmp_path):
+        _server(tmp_path, "alpha", requires_binaries=["soffice; rm -rf /"])
+        with pytest.raises(ConfigError, match="plain binary name"):
+            discover_mcp_servers(_cfg(tmp_path))
+
+    def test_packaged_soffice_declares_its_binary(self):
+        manifests = discover_mcp_servers(MCPDiscoveryConfig())
+        assert manifests["soffice"].requires_binaries == ["soffice"]
+
+
 class TestPackagedManifests:
     def test_every_manifest_validates_against_the_schema_it_names(self):
         """The loader aliases `$schema` away before pydantic sees it, so a

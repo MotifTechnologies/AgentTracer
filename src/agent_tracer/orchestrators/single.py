@@ -7,8 +7,10 @@ inside its own agent session so concurrent tasks stay fully isolated
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
+import shlex
 import shutil
 import tempfile
 from contextlib import AsyncExitStack, contextmanager
@@ -185,6 +187,10 @@ class SingleAgentOrchestrator:
         async with AsyncExitStack() as stack:
             exec_tool = await stack.enter_async_context(exec_provider)
 
+            # The sandbox is up and the agent has not run: the one moment a
+            # missing binary can be caught without costing a trajectory.
+            await self._check_sandbox_binaries(env_config, exec_provider, task_image)
+
             tools: list[Any] = [exec_tool]
             if self.config.tools.web:
                 from stirrup.tools.web import WebToolProvider
@@ -215,6 +221,62 @@ class SingleAgentOrchestrator:
                     await exec_provider.upload_files(workspace, dest_dir=".")
 
             return await self._run_agent(task, trajectory, agent_id, recorder, tools)
+
+    async def _check_sandbox_binaries(
+        self, env_config: Any, provider: Any, task_image: str | None
+    ) -> None:
+        """Refuse the task when a server's `requires_binaries` is not in the sandbox.
+
+        soffice hands its commands to `SandboxAccess.exec`, so a sandbox
+        without the binary fails only at the runtime tool call — the
+        trajectory ends normally with the tool quietly broken, which is the
+        silent-failure class the discovery fail-fast exists to prevent.
+
+        Per task rather than at startup, because a task that ships its own
+        ``docker_image`` must be checked against that image, and the sandbox
+        it becomes does not exist until now. Probed through the same
+        describe/attach path the servers themselves use, so passing here also
+        means the path a server will take works.
+        """
+        required: dict[str, list[str]] = {}
+        for name, manifest in (self.manifests or {}).items():
+            for binary in manifest.requires_binaries:
+                required.setdefault(binary, []).append(name)
+        if not required:
+            return
+
+        from agent_tracer.environments import (
+            SandboxMissingBinariesError,
+            attach,
+            describe,
+        )
+
+        desc = describe(env_config, provider)
+        access = attach(env_config.type, desc["sandbox_id"], env_config.resolved_options())
+        # One probe for the lot: names are validated to be plain (no shell) at
+        # manifest load, and quoted anyway.
+        probe = "; ".join(
+            f"command -v {shlex.quote(b)} >/dev/null 2>&1 || echo {shlex.quote(b)}"
+            for b in sorted(required)
+        )
+        _code, stdout, _stderr = await asyncio.to_thread(access.exec, probe, 60)
+        missing = [b for b in stdout.split() if b in required]
+        if missing:
+            where = (
+                f"image {env_config.image!r}"
+                if env_config.image
+                else f"the {env_config.type!r} environment"
+            )
+            raise SandboxMissingBinariesError(
+                "sandbox is missing "
+                + ", ".join(
+                    f"{b!r} (required by MCP server {', '.join(sorted(required[b]))})"
+                    for b in missing
+                )
+                + f" — {where}. Use an image that has it, or drop the server via "
+                "mcp.exclude.",
+                run_fatal=task_image is None,
+            )
 
     def _task_mcp_config(self, provider: Any, env_config: Any) -> Any:
         """The MCP config for this task, told which sandbox to work on."""

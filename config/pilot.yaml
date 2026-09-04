@@ -1,6 +1,8 @@
 dataset:
   name: custom
-  path: data/seeds/toolcall_workspace.jsonl
+  # The tracked sample, so this config runs from a fresh clone. Point it at a
+  # generated corpus for a real pilot — corpora live untracked in data/seeds/.
+  path: data/seeds/toolcall_workspace_sample.jsonl
 
 model:
   model_name: "moonshotai/Kimi-K3"

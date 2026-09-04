@@ -37,6 +37,20 @@ ENTRY_POINT_GROUP = "agent_tracer.environments"
 BUILTIN = ("local", "docker")
 
 
+class SandboxMissingBinariesError(ConfigError):
+    """A selected MCP server's binary is not in the task's sandbox.
+
+    ``run_fatal`` says whose image is short. The config's image is shared by
+    every task without one of its own, so the whole run is doomed and aborts.
+    An image the task shipped breaks only that task's samples — recorded as
+    that task's error, without retries, while its siblings keep running.
+    """
+
+    def __init__(self, message: str, *, run_fatal: bool):
+        super().__init__(message)
+        self.run_fatal = run_fatal
+
+
 @runtime_checkable
 class SandboxAccess(Protocol):
     """Running one command where the agent's files are. Nothing more."""

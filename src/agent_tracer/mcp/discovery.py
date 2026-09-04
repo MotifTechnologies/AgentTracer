@@ -12,6 +12,7 @@ from __future__ import annotations
 import atexit
 import json
 import os
+import re
 import shutil
 import tempfile
 from functools import cache
@@ -56,6 +57,14 @@ class MCPManifest(BaseModel):
     #: credentials live. Opt-in, so a key does not go to a server that only
     #: computes, or to a third-party one dropped into the directory later.
     sandbox_options: bool = False
+    #: Binaries this server needs *inside the task's sandbox*. soffice hands
+    #: its commands to `SandboxAccess.exec`, so a sandbox without the binary
+    #: fails only at the runtime tool call — the trajectory ends normally with
+    #: the tool quietly broken. Declared here, the orchestrator probes the
+    #: sandbox as soon as it is up and refuses the task instead. Not for a
+    #: server that only parses bytes in its own process (pdf, xlsx): their
+    #: dependencies are the server's, not the sandbox's.
+    requires_binaries: list[str] = []
     startup_timeout_s: float = 15
     call_timeout_s: float = 60
     tools: list[ManifestTool] = []
@@ -79,6 +88,18 @@ class MCPManifest(BaseModel):
         # an empty one was accepted here while failing its own validation.
         if self.transport == "stdio" and "headers" in self.model_fields_set:
             raise ValueError("'headers' applies to http transport only")
+        # An http server's lifecycle is external — there is no sandbox for it
+        # to reach, so a requirement on the sandbox's contents is a mistake in
+        # the manifest, not a no-op. Same key-not-contents rule as `headers`.
+        if self.transport == "http" and "requires_binaries" in self.model_fields_set:
+            raise ValueError("'requires_binaries' applies to stdio transport only")
+        # Plain names only: these are interpolated into the probe command the
+        # orchestrator runs in the sandbox, and a name is not a place for shell.
+        for binary in self.requires_binaries:
+            if not re.fullmatch(r"[A-Za-z0-9._+-]+", binary):
+                raise ValueError(
+                    f"requires_binaries: {binary!r} is not a plain binary name"
+                )
         return self
 
 

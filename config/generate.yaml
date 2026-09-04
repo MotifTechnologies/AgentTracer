@@ -3,7 +3,10 @@
 #     -c dataset.path=data/seeds/<set>.jsonl -c output.path=results/<set>
 dataset:
   name: custom
-  path: data/seeds/toolcall_workspace.jsonl
+  # Default is the tracked sample so the config runs from a fresh clone; a
+  # real generation run always overrides it per seed set as above (corpora
+  # live untracked in data/seeds/).
+  path: data/seeds/toolcall_workspace_sample.jsonl
 
 model:
   model_name: "moonshotai/Kimi-K3"

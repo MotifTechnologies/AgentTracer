@@ -30,6 +30,7 @@ from agent_tracer.config.schema import RunConfig
 from agent_tracer.core.task import Task
 from agent_tracer.core.trajectory import Trajectory
 from agent_tracer.datasets.custom import get_dataset
+from agent_tracer.environments import SandboxMissingBinariesError
 from agent_tracer.mcp.discovery import build_stirrup_mcp_config, discover_mcp_servers
 from agent_tracer.orchestrators.single import SingleAgentOrchestrator
 
@@ -164,6 +165,15 @@ class Runner:
                 }
             except (TimeoutError, asyncio.TimeoutError):
                 last_error = f"task timeout after {self.config.runner.task_timeout}s"
+            except SandboxMissingBinariesError as e:
+                # Not transient: the image will not grow the binary between
+                # attempts. The shared config image dooms every task, so the
+                # run aborts; an image the task shipped breaks only this task.
+                if e.run_fatal:
+                    raise
+                last_error = describe_exception(e)
+                trajectory.add_event("error", {"message": last_error, "attempt": attempt})
+                break
             except Exception as e:  # noqa: BLE001 — record and retry per policy
                 last_error = describe_exception(e)
 

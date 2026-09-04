@@ -78,6 +78,15 @@
       "default": false,
       "description": "This server attaches to the task's sandbox and needs environment.options to do it (stdio only). Those options are where a backend's credentials go, so AGENT_TRACER_OPTIONS is sent only to servers that declare this. The rest of the sandbox description (AGENT_TRACER_ENV_TYPE, _SANDBOX_ID, _WORKDIR, _HOST_DIR, _USER) goes to every server."
     },
+    "requires_binaries": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9._+-]+$"
+      },
+      "default": [],
+      "description": "Binaries this server needs inside the task's sandbox (stdio only). The orchestrator probes each with `command -v` as soon as the task's sandbox is up and refuses the task when one is missing — otherwise the tool fails only at the runtime call and the trajectory ends normally with the tool quietly broken. Declare only what runs via SandboxAccess.exec (soffice); a server that parses bytes in its own process (pdf, xlsx) declares nothing here."
+    },
     "startup_timeout_s": {
       "type": "number",
       "exclusiveMinimum": 0,
@@ -152,6 +161,22 @@
         "not": {
           "required": [
             "headers"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "transport": {
+            "const": "http"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "requires_binaries"
           ]
         }
       }

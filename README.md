@@ -31,7 +31,9 @@ beside it are exported from.
 
 The trajectory file format the recorder writes — envelope, the twelve event
 types and their payloads, and how the exporters read them — is specified in
-[docs/trajectory-schema.md](docs/trajectory-schema.md).
+[docs/trajectory-schema.md](docs/trajectory-schema.md). What the framework is
+required to do, as verifiable requirements mapped to the modules that satisfy
+them, is [docs/requirements.md](docs/requirements.md).
 
 ## Quick start
 

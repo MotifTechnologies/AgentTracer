@@ -1,5 +1,33 @@
 # TODO
 
+## 배포용 ShareGPT 직렬화가 exporter 명세와 다르다
+
+`datasample/sft_all.jsonl`(1,023행, HF 업로드 준비본)과 `dump.json`은 현행
+exporter 산출물이 아니라 **역할별 키셋**으로 직렬화되어 있다:
+
+- system/user: `role, content`
+- assistant: `role, content, tool_calls` + `thinking`(reasoning이 있던 턴에만,
+  703턴 중 679턴). 툴콜만 있는 턴의 `content: null`은 유지된다
+- tool: `role, content, tool_call_id`
+
+반면 exporter 명세(`export/sharegpt.py`의 `_MESSAGE_KEYS`)는 "모든 턴이 5키
+(role/content/tool_calls/thinking/tool_call_id)를 null로라도 균일하게 갖는다"
+이다. null을 일괄 제거한 것도 아니고(assistant의 `content: null`이 살아 있다),
+학습기가 받는 chat-template 형태로 맞춘 별도 변환본으로 보인다.
+
+- [ ] 이 형식이 어디서 만들어졌는지 확인한다(변환 스크립트의 소재)
+- [ ] 정합 방향을 결정한다:
+      (a) 역할별 형식을 exporter의 공식 출력 모드로 추가하고 docs에 병기 —
+          변환 과정이 저장소 코드로 증빙된다
+      (b) 균일 5키를 정본으로 유지하고, HF 공개본이 정본 형식으로 나가는지
+          공개 전 단계에서 확인한다
+- [ ] thinking이 없는 assistant 턴(24/703)의 학습 시 처리 방식을 정한다
+      (빈 문자열로 채울지, 키 생략을 학습기가 허용하는지)
+
+`datasample/`은 HF 캐시 흔적(.gitattributes, .cache)까지 든 33MB 디렉토리가
+작업 트리 안에 untracked로 있던 것 — .gitignore에 추가했다. 데이터 배포는
+저장소가 아니라 HF 데이터셋 저장소의 몫이다.
+
 ## soffice를 쓰려면 LibreOffice가 든 이미지가 있어야 한다
 
 `soffice` 서버는 `soffice --headless`를 `SandboxAccess.exec`로 넘긴다. 즉 LibreOffice가

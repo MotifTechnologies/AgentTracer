@@ -37,3 +37,9 @@ DATA_BUILDER/
 
 # Generated report deck
 *.pptx
+
+# Local dataset staging for the HF dataset repo — data ships from HF, not here
+datasample/
+
+# macOS
+.DS_Store

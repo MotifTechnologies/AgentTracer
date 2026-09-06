@@ -57,16 +57,22 @@ def test_manifests_exist():
 @pytest.mark.parametrize("manifest_path", MANIFESTS, ids=lambda p: p.parent.name)
 class TestManifestMatchesImplementation:
     def test_manifest_declares_its_tools(self, manifest_path: Path):
-        manifest = MCPManifest.model_validate(json.loads(manifest_path.read_text("utf-8")))
+        manifest = MCPManifest.model_validate(
+            json.loads(manifest_path.read_text("utf-8"))
+        )
         assert manifest.tools, (
             f"{manifest.name}: manifest declares no tools — the inventory and the "
             "contract check both read this list"
         )
         for tool in manifest.tools:
-            assert tool.description.strip(), f"{manifest.name}.{tool.name}: empty description"
+            assert tool.description.strip(), (
+                f"{manifest.name}.{tool.name}: empty description"
+            )
 
     def test_declared_tools_match_implemented_tools(self, manifest_path: Path):
-        manifest = MCPManifest.model_validate(json.loads(manifest_path.read_text("utf-8")))
+        manifest = MCPManifest.model_validate(
+            json.loads(manifest_path.read_text("utf-8"))
+        )
         server_py = manifest_path.parent / "server.py"
         if not server_py.is_file():
             # An HTTP server we point at rather than write; nothing local to compare.

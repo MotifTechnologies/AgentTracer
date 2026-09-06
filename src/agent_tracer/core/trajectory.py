@@ -57,7 +57,9 @@ class Trajectory:
     timestamp_end: str | None = None
     token_totals: TokenTotals = field(default_factory=TokenTotals)
 
-    def add_event(self, event_type: str, data: dict[str, Any], agent_id: str | None = None) -> Event:
+    def add_event(
+        self, event_type: str, data: dict[str, Any], agent_id: str | None = None
+    ) -> Event:
         event = Event(
             event_id=f"e{len(self.events) + 1:04d}",
             event_type=event_type,

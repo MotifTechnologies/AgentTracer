@@ -10,7 +10,9 @@ def _record(task, sample_idx, correct, steps=5, tokens=1000):
             "sample_idx": sample_idx,
             "steps": steps,
             "usage": {"total_tokens": tokens},
-            "evaluation": None if correct is None else {"correct": correct, "score": None},
+            "evaluation": None
+            if correct is None
+            else {"correct": correct, "score": None},
         }
     }
 
@@ -54,14 +56,20 @@ class TestBestPerTask:
         assert [r["extra"]["sample_idx"] for r in kept] == [1]
 
     def test_task_with_no_correct_rollout_is_dropped_and_counted(self):
-        records = [_record("t1", 0, False), _record("t1", 1, False), _record("t2", 0, True)]
+        records = [
+            _record("t1", 0, False),
+            _record("t1", 1, False),
+            _record("t2", 0, True),
+        ]
         kept, stats = select_records(records, best_per_task=True)
         assert [r["extra"]["task"] for r in kept] == ["t2"]
         assert stats["tasks_without_a_correct_sample"] == 1
 
 
 class TestUngradedAborts:
-    @pytest.mark.parametrize("flags", [{"require_correct": True}, {"best_per_task": True}])
+    @pytest.mark.parametrize(
+        "flags", [{"require_correct": True}, {"best_per_task": True}]
+    )
     def test_missing_verdict_raises(self, flags):
         records = [_record("t1", 0, True), _record("t1", 1, None)]
         with pytest.raises(UngradedTrajectoryError, match="no correctness verdict"):

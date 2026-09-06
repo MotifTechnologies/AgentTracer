@@ -10,7 +10,10 @@ class TestExceptionGroupIsUnwrapped:
 
     def test_the_cause_is_named(self):
         group = ExceptionGroup("boom", [TimeoutError("read timed out after 300s")])
-        assert describe_exception(group) == "ExceptionGroup[TimeoutError: read timed out after 300s]"
+        assert (
+            describe_exception(group)
+            == "ExceptionGroup[TimeoutError: read timed out after 300s]"
+        )
 
     def test_several_causes_are_kept(self):
         group = ExceptionGroup("boom", [ValueError("a"), KeyError("b")])
@@ -19,7 +22,9 @@ class TestExceptionGroupIsUnwrapped:
 
     def test_nesting_is_followed(self):
         inner = ExceptionGroup("inner", [RuntimeError("daemon gone")])
-        assert "RuntimeError: daemon gone" in describe_exception(ExceptionGroup("outer", [inner]))
+        assert "RuntimeError: daemon gone" in describe_exception(
+            ExceptionGroup("outer", [inner])
+        )
 
     def test_deep_nesting_terminates(self):
         exc: BaseException = RuntimeError("leaf")

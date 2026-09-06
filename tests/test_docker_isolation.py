@@ -78,13 +78,19 @@ def _provider(**kwargs: Any) -> IsolatedDockerCodeExecToolProvider:
     return IsolatedDockerCodeExecToolProvider("python:3.12-slim", **kwargs)
 
 
-def _started(provider: IsolatedDockerCodeExecToolProvider, **host_config: Any) -> _Container:
+def _started(
+    provider: IsolatedDockerCodeExecToolProvider, **host_config: Any
+) -> _Container:
     """The container upstream's `__aenter__` would have created, and its state."""
     provider._client = _Client()
-    container = provider._client.containers.run("python:3.12-slim", command="tail -f /dev/null")
+    container = provider._client.containers.run(
+        "python:3.12-slim", command="tail -f /dev/null"
+    )
     container.attrs["HostConfig"] = {
         "PidsLimit": provider._client.containers.run_kwargs.get("pids_limit", 0),
-        "NetworkMode": provider._client.containers.run_kwargs.get("network_mode", "default"),
+        "NetworkMode": provider._client.containers.run_kwargs.get(
+            "network_mode", "default"
+        ),
         **host_config,
     }
     provider._container = container
@@ -171,7 +177,9 @@ class TestUpstream:
     creating its container through `self._client`.
     """
 
-    def test_stirrups_own_aenter_creates_an_isolated_container(self, monkeypatch, tmp_path):
+    def test_stirrups_own_aenter_creates_an_isolated_container(
+        self, monkeypatch, tmp_path
+    ):
         client = _Client()
         monkeypatch.setattr(upstream.docker, "from_env", lambda: client)
 
@@ -185,4 +193,7 @@ class TestUpstream:
 
         assert client.containers.run_kwargs["pids_limit"] == 64
         assert client.containers.run_kwargs["network_mode"] == "none"
-        assert client.containers.container.updated == {"mem_limit": "1g", "memswap_limit": "1g"}
+        assert client.containers.container.updated == {
+            "mem_limit": "1g",
+            "memswap_limit": "1g",
+        }

@@ -92,7 +92,9 @@ class TestBuild:
     """
 
     def test_local_passes_on_the_allowlist(self):
-        provider = _load("local").build(_cfg(type="local", allowed_commands=["^python"]), task_id=None)
+        provider = _load("local").build(
+            _cfg(type="local", allowed_commands=["^python"]), task_id=None
+        )
 
         assert provider._allowed_commands == ["^python"]
 
@@ -126,7 +128,14 @@ class TestAttach:
         module.attach("abc123", {"user": "someone"}).exec("echo hi")
 
         assert seen["argv"] == [
-            "docker", "exec", "--user", "someone", "abc123", "sh", "-c", "echo hi",
+            "docker",
+            "exec",
+            "--user",
+            "someone",
+            "abc123",
+            "sh",
+            "-c",
+            "echo hi",
         ]
 
 
@@ -147,7 +156,9 @@ class TestDescribe:
 
     def test_docker_reports_the_container_and_the_configured_workdir(self):
         provider = SimpleNamespace(container_id="abc123", temp_dir="/tmp/host")
-        out = describe(_cfg(type="docker", working_dir="/workspace", user="user"), provider)
+        out = describe(
+            _cfg(type="docker", working_dir="/workspace", user="user"), provider
+        )
 
         assert out["sandbox_id"] == "abc123"
         assert out["workdir"] == "/workspace"
@@ -178,7 +189,9 @@ class TestSandboxEnv:
         provider = SimpleNamespace(container_id="abc123", temp_dir="/tmp/host")
         cfg = _cfg(type="docker", working_dir="/workspace", user="user")
 
-        out = sandbox_env(env_type=cfg.type, options=cfg.options, **describe(cfg, provider))
+        out = sandbox_env(
+            env_type=cfg.type, options=cfg.options, **describe(cfg, provider)
+        )
 
         assert out["AGENT_TRACER_SANDBOX_ID"] == "abc123"
         assert out["AGENT_TRACER_WORKDIR"] == "/workspace"
@@ -190,7 +203,9 @@ class TestFromEnv:
     def test_it_reads_what_sandbox_env_wrote(self):
         provider = SimpleNamespace(temp_dir="/tmp/local_exec_env_x")
         cfg = _cfg(type="local", working_dir="/workspace")
-        written = sandbox_env(env_type=cfg.type, options=cfg.options, **describe(cfg, provider))
+        written = sandbox_env(
+            env_type=cfg.type, options=cfg.options, **describe(cfg, provider)
+        )
 
         _access, workdir = from_env(written)
 
@@ -238,6 +253,7 @@ class TestFromEnv:
         containment check here would stop nothing a caller cannot do by writing
         the path out in full. The sandbox is the boundary, not this function."""
         assert resolve("../shared/data.csv", "/work") == "/work/../shared/data.csv"
+
 
 class TestByteTransfer:
     """Moving bytes across an interface that only offers `exec`.
@@ -354,7 +370,9 @@ class TestByteTransfer:
         assert target.read_bytes() == payload
         # The staging file is a sibling, so match the redirect target whole.
         redirect = re.compile(rf">>?\s*{re.escape(shlex.quote(str(target)))}(\s|$)")
-        assert not [c[:60] for c in seen if redirect.search(c)], "the destination is truncated first"
+        assert not [c[:60] for c in seen if redirect.search(c)], (
+            "the destination is truncated first"
+        )
         assert any(c.startswith("mv ") for c in seen), [c[:60] for c in seen]
 
     def test_a_write_that_fails_partway_leaves_the_original(self, sandbox, monkeypatch):
@@ -366,11 +384,16 @@ class TestByteTransfer:
 
         def full_disk_after_the_first_chunk(command, timeout_s=120):
             calls.append(command)
-            if "base64 -d" in command and len([c for c in calls if "base64 -d" in c]) > 1:
+            if (
+                "base64 -d" in command
+                and len([c for c in calls if "base64 -d" in c]) > 1
+            ):
                 return 1, "", "printf: write error: No space left on device"
             return real(command, timeout_s=timeout_s)
 
-        monkeypatch.setattr(access, "exec", full_disk_after_the_first_chunk, raising=False)
+        monkeypatch.setattr(
+            access, "exec", full_disk_after_the_first_chunk, raising=False
+        )
         with pytest.raises(OSError, match="book.xlsx"):
             write_bytes(access, str(target), b"z" * (WRITE_CHUNK_BYTES * 3))
 
@@ -389,7 +412,9 @@ class TestByteTransfer:
         assert (root / "note.txt").is_file()
         assert (root / "note.txt").read_bytes() == b"hello"
 
-    def test_an_oversized_read_is_refused_by_size_not_by_transferring_it(self, sandbox, monkeypatch):
+    def test_an_oversized_read_is_refused_by_size_not_by_transferring_it(
+        self, sandbox, monkeypatch
+    ):
         access, root = sandbox
         target = root / "huge.bin"
         target.write_bytes(b"x" * 32)
@@ -442,7 +467,9 @@ class TestContaminatedStdout:
         access, root = sandbox
         target = root / "book.xlsx"
         target.write_bytes(bytes(range(256)) * 4)
-        self._wrap(access, monkeypatch, lambda c, out: out if "wc " in c else self.BANNER + out)
+        self._wrap(
+            access, monkeypatch, lambda c, out: out if "wc " in c else self.BANNER + out
+        )
 
         with pytest.raises(OSError, match="book.xlsx"):
             read_bytes(access, str(target))
@@ -452,22 +479,30 @@ class TestContaminatedStdout:
         access, root = sandbox
         target = root / "book.xlsx"
         target.write_bytes(b"abc")
-        self._wrap(access, monkeypatch, lambda c, out: self.BANNER + out if "wc " in c else out)
+        self._wrap(
+            access, monkeypatch, lambda c, out: self.BANNER + out if "wc " in c else out
+        )
 
         with pytest.raises(OSError, match="book.xlsx"):
             read_bytes(access, str(target))
 
-    def test_a_short_transfer_is_caught_by_the_size_already_fetched(self, sandbox, monkeypatch):
+    def test_a_short_transfer_is_caught_by_the_size_already_fetched(
+        self, sandbox, monkeypatch
+    ):
         """A whole base64 quantum missing still decodes, to a shorter file."""
         access, root = sandbox
         target = root / "book.xlsx"
         target.write_bytes(bytes(range(256)))
-        self._wrap(access, monkeypatch, lambda c, out: out if "wc " in c else out.strip()[:-8])
+        self._wrap(
+            access, monkeypatch, lambda c, out: out if "wc " in c else out.strip()[:-8]
+        )
 
         with pytest.raises(OSError, match="book.xlsx"):
             read_bytes(access, str(target))
 
-    def test_base64_wrapped_at_76_columns_still_arrives_exact(self, sandbox, monkeypatch):
+    def test_base64_wrapped_at_76_columns_still_arrives_exact(
+        self, sandbox, monkeypatch
+    ):
         """The cost of dropping `-w0`, which is the flag BSD's base64 lacks."""
         import textwrap
 
@@ -478,12 +513,16 @@ class TestContaminatedStdout:
         self._wrap(
             access,
             monkeypatch,
-            lambda c, out: out if "wc " in c else "\n".join(textwrap.wrap(out.strip(), 76)) + "\n",
+            lambda c, out: (
+                out if "wc " in c else "\n".join(textwrap.wrap(out.strip(), 76)) + "\n"
+            ),
         )
 
         assert read_bytes(access, str(target)) == payload
 
-    def test_the_transfer_asks_for_no_option_a_BSD_shell_lacks(self, sandbox, monkeypatch):
+    def test_the_transfer_asks_for_no_option_a_BSD_shell_lacks(
+        self, sandbox, monkeypatch
+    ):
         """`stat -c %s` and `base64 -w0` are GNU/busybox only. On a BSD or macOS
         local backend they fail, and the failure was reported as
         `FileNotFoundError: No such file in the sandbox` — blaming the file for

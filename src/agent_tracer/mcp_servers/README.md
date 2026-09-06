@@ -165,7 +165,7 @@ base64를 태워 보내는 게 전부지만, 셋이 같은 걸 필요로 해서 
 from agent_tracer.environments import from_env, read_bytes, resolve
 
 access, workdir = from_env()
-raw = read_bytes(access, resolve("report.pdf", workdir))   # 정확한 바이트
+raw = read_bytes(access, resolve("report.pdf", workdir))  # 정확한 바이트
 ```
 
 `pdf`·`xlsx`가 이 위에 있다 — **샌드박스에서 바이트만 꺼내 서버 프로세스에서

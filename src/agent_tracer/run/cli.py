@@ -16,7 +16,9 @@ def main() -> None:
 
 
 @main.command()
-@click.option("--config", "-f", "config_path", required=True, type=click.Path(exists=True))
+@click.option(
+    "--config", "-f", "config_path", required=True, type=click.Path(exists=True)
+)
 @click.option(
     "--set",
     "-c",
@@ -84,7 +86,9 @@ def run(config_path: str, overrides: tuple[str, ...]) -> None:
 @click.option("--split", default="train", show_default=True, help="source.split")
 @click.option("--subset", default=None, help="source.subset")
 @click.option("--category", default=None, help="record category")
-@click.option("--include-errors", is_flag=True, help="Also export error-status trajectories")
+@click.option(
+    "--include-errors", is_flag=True, help="Also export error-status trajectories"
+)
 @click.option(
     "--require-correct",
     is_flag=True,

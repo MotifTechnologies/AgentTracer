@@ -1,6 +1,14 @@
 import json
 
-from stirrup import AssistantMessage, ReasoningBlock, TextBlock, TokenUsage, ToolCall, ToolMessage, UserMessage
+from stirrup import (
+    AssistantMessage,
+    ReasoningBlock,
+    TextBlock,
+    TokenUsage,
+    ToolCall,
+    ToolMessage,
+    UserMessage,
+)
 from stirrup.core.models import TurnWarningMessage
 
 from agent_tracer.core.trajectory import Trajectory
@@ -24,13 +32,19 @@ class TestRecorder:
     def _recorder(self):
         trajectory = Trajectory(task_id="t1")
         seen = []
-        recorder = TrajectoryRecorder(trajectory, agent_id="a0", on_tokens=lambda i, o: seen.append((i, o)))
+        recorder = TrajectoryRecorder(
+            trajectory, agent_id="a0", on_tokens=lambda i, o: seen.append((i, o))
+        )
         return trajectory, recorder, seen
 
     def test_assistant_message_events(self):
         trajectory, recorder, seen = self._recorder()
-        tc = ToolCall.from_provider(provider_id="call_1", name="code_exec", arguments='{"code": "1+1"}')
-        recorder.assistant_message(1, 10, _assistant(reasoning="think", text="answer", tool_calls=[tc]))
+        tc = ToolCall.from_provider(
+            provider_id="call_1", name="code_exec", arguments='{"code": "1+1"}'
+        )
+        recorder.assistant_message(
+            1, 10, _assistant(reasoning="think", text="answer", tool_calls=[tc])
+        )
 
         types = [e.event_type for e in trajectory.events]
         assert types == ["thinking", "model_response", "tool_call"]
@@ -43,7 +57,11 @@ class TestRecorder:
 
     def test_tool_result_event(self):
         trajectory, recorder, _ = self._recorder()
-        recorder.tool_result(ToolMessage(content="ok", tool_call_id="call_1", name="code_exec", success=True))
+        recorder.tool_result(
+            ToolMessage(
+                content="ok", tool_call_id="call_1", name="code_exec", success=True
+            )
+        )
         event = trajectory.events[0]
         assert event.event_type == "tool_result"
         assert event.data["success"] is True
@@ -52,7 +70,10 @@ class TestRecorder:
         trajectory, recorder, _ = self._recorder()
         recorder.user_message(TurnWarningMessage(content="You have 2 turns remaining"))
         recorder.user_message(UserMessage(content="real user turn"))
-        assert [e.event_type for e in trajectory.events] == ["injected_turn_warning", "user_message"]
+        assert [e.event_type for e in trajectory.events] == [
+            "injected_turn_warning",
+            "user_message",
+        ]
 
 
 class TestTrajectory:

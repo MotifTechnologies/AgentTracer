@@ -36,6 +36,7 @@ mcp = MCPServer(name="calculator", version="0.1.0")
 #: actually asks for; what still does not fit is reported, not hidden.
 getcontext().prec = 200
 
+
 def _divmod(left: Decimal, right: Decimal) -> tuple[Decimal, Decimal]:
     """Python's `divmod`, which Decimal's does not match.
 

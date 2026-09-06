@@ -80,7 +80,9 @@ class IsolatedDockerCodeExecToolProvider(DockerCodeExecToolProvider):
     @_client.setter
     def _client(self, client: Any) -> None:
         self._docker_client = (
-            None if client is None else _ClientWithHostConfig(client, **self._creation_kwargs())
+            None
+            if client is None
+            else _ClientWithHostConfig(client, **self._creation_kwargs())
         )
 
     def _creation_kwargs(self) -> dict[str, Any]:

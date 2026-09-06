@@ -21,7 +21,11 @@ def _traj():
                     "turn": 1,
                     "content": None,
                     "tool_calls": [
-                        {"tool_call_id": "c1", "name": "submit", "arguments": {"answer": "42"}}
+                        {
+                            "tool_call_id": "c1",
+                            "name": "submit",
+                            "arguments": {"answer": "42"},
+                        }
                     ],
                 },
                 "agent_id": "a0",
@@ -34,7 +38,12 @@ def _traj():
             },
             {
                 "event_type": "tool_result",
-                "data": {"tool_call_id": "c1", "name": "submit", "content": "42", "success": True},
+                "data": {
+                    "tool_call_id": "c1",
+                    "name": "submit",
+                    "content": "42",
+                    "success": True,
+                },
                 "agent_id": "a0",
             },
             {"event_type": "submission", "data": {"answer": "42"}, "agent_id": "a0"},
@@ -50,7 +59,13 @@ def _traj():
 class TestShareGPTRecord:
     def test_schema_shape(self):
         record = trajectory_to_record(_traj(), split="train", category="agent")
-        assert sorted(record) == ["category", "conversations", "extra", "source", "tools"]
+        assert sorted(record) == [
+            "category",
+            "conversations",
+            "extra",
+            "source",
+            "tools",
+        ]
         assert record["source"]["provider"] is None
         assert record["source"]["synthetic"]["synth"] is True
         assert record["extra"]["usage"] == {

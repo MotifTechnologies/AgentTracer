@@ -18,7 +18,10 @@ class TestKeyResolution:
         assert tools.resolved_brave_key() == "from-config-ref"
 
     def test_a_literal_is_taken_as_written(self):
-        assert ToolsConfig(web=True, brave_api_key="bsk-literal").resolved_brave_key() == "bsk-literal"
+        assert (
+            ToolsConfig(web=True, brave_api_key="bsk-literal").resolved_brave_key()
+            == "bsk-literal"
+        )
 
     def test_environment_is_the_fallback(self, monkeypatch):
         monkeypatch.setenv("BRAVE_API_KEY", "from-environment")
@@ -31,7 +34,9 @@ class TestKeyResolution:
     def test_an_unset_reference_still_aborts(self, monkeypatch):
         monkeypatch.delenv("AT_MISSING_BRAVE", raising=False)
         with pytest.raises(ConfigError, match="AT_MISSING_BRAVE"):
-            ToolsConfig(web=True, brave_api_key="env:AT_MISSING_BRAVE").resolved_brave_key()
+            ToolsConfig(
+                web=True, brave_api_key="env:AT_MISSING_BRAVE"
+            ).resolved_brave_key()
 
 
 class TestStartupRefusal:

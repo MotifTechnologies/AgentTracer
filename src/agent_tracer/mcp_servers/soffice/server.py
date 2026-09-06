@@ -140,7 +140,11 @@ def convert_document(
     result = _convert(source, fmt, out_dir, timeout_s)
 
     _, size, _ = _run(f"stat -c %s {shlex.quote(result)}", 30)
-    return {"output_path": result, "size_bytes": int(size.strip() or 0), "format": base_fmt}
+    return {
+        "output_path": result,
+        "size_bytes": int(size.strip() or 0),
+        "format": base_fmt,
+    }
 
 
 @mcp.tool()
@@ -169,7 +173,9 @@ def extract_text(path: str, timeout_s: int = DEFAULT_TIMEOUT_S) -> dict:
         produced = _convert(source, "txt:Text (encoded):UTF8", scratch, timeout_s)
         rc, text, err = _run(f"cat {shlex.quote(produced)}", timeout_s)
         if rc != 0:
-            raise RuntimeError(f"Could not read the extracted text: {err.strip()[:200]}")
+            raise RuntimeError(
+                f"Could not read the extracted text: {err.strip()[:200]}"
+            )
     finally:
         _run(f"rm -rf {shlex.quote(scratch)}", 30)
 

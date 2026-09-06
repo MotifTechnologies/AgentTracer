@@ -121,7 +121,9 @@ def _sandbox():
     return _SANDBOX
 
 
-def _call(database: str, sql: str, params: SqlParams, mode: str, max_rows: int = 0) -> dict:
+def _call(
+    database: str, sql: str, params: SqlParams, mode: str, max_rows: int = 0
+) -> dict:
     """Run one statement in the sandbox and return its result."""
     target = resolve(database, _sandbox()[1])
     request = base64.b64encode(
@@ -145,7 +147,9 @@ def _call(database: str, sql: str, params: SqlParams, mode: str, max_rows: int =
     try:
         reply = json.loads(out.strip().splitlines()[-1])
     except (ValueError, IndexError) as exc:
-        raise RuntimeError(f"Unexpected output from the sandbox: {out.strip()[:300]}") from exc
+        raise RuntimeError(
+            f"Unexpected output from the sandbox: {out.strip()[:300]}"
+        ) from exc
 
     # Parsing is not the same as being ours. Whatever else the sandbox printed
     # last — a login shell's banner, a wrapper's own output — parses too when it
@@ -234,7 +238,9 @@ def describe_table(database: str, table: str) -> dict:
     # `table` cannot be a `?` placeholder — PRAGMA takes an identifier, not a
     # value — so it is quoted as one, which is what makes it safe here.
     identifier = '"' + table.replace('"', '""') + '"'
-    result = _call(database, f"PRAGMA table_info({identifier})", None, mode="query", max_rows=1000)
+    result = _call(
+        database, f"PRAGMA table_info({identifier})", None, mode="query", max_rows=1000
+    )
     if not result["rows"]:
         raise ValueError(f"No such table in {database}: {table}")
 

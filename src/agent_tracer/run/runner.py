@@ -81,7 +81,9 @@ class Runner:
         self.config = config
         self.manifests = discover_mcp_servers(config.mcp)
         self.mcp_config = (
-            build_stirrup_mcp_config(self.manifests, config.mcp.resolved_discovery_dir())
+            build_stirrup_mcp_config(
+                self.manifests, config.mcp.resolved_discovery_dir()
+            )
             if self.manifests
             else None
         )
@@ -135,14 +137,20 @@ class Runner:
 
         for attempt in range(1, retry.max_attempts + 1):
             trajectory = Trajectory(
-                task_id=task.task_id, sample_idx=sample_idx, metadata=self._base_metadata()
+                task_id=task.task_id,
+                sample_idx=sample_idx,
+                metadata=self._base_metadata(),
             )
             try:
                 result = await asyncio.wait_for(
-                    self.orchestrator.run_task(task, trajectory, on_tokens=counter.on_tokens),
+                    self.orchestrator.run_task(
+                        task, trajectory, on_tokens=counter.on_tokens
+                    ),
                     timeout=self.config.runner.task_timeout,
                 )
-                dataset = get_dataset(self.config.dataset.name, self.config.dataset.path)
+                dataset = get_dataset(
+                    self.config.dataset.name, self.config.dataset.path
+                )
                 evaluation = dataset.evaluate(task, result["submission"])
                 trajectory.finish(
                     {
@@ -172,7 +180,9 @@ class Runner:
                 if e.run_fatal:
                     raise
                 last_error = describe_exception(e)
-                trajectory.add_event("error", {"message": last_error, "attempt": attempt})
+                trajectory.add_event(
+                    "error", {"message": last_error, "attempt": attempt}
+                )
                 break
             except Exception as e:  # noqa: BLE001 — record and retry per policy
                 last_error = describe_exception(e)
@@ -181,7 +191,9 @@ class Runner:
             if attempt < retry.max_attempts:
                 await asyncio.sleep(retry.backoff_base**attempt)
 
-        trajectory.finish({"submission": None, "exit_status": "error", "error": last_error})
+        trajectory.finish(
+            {"submission": None, "exit_status": "error", "error": last_error}
+        )
         if self.config.output.save_trajectories:
             trajectory.save(self.trajectory_dir)
         return {

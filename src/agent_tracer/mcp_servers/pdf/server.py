@@ -77,7 +77,9 @@ def _reader(raw: bytes):
         except Exception:  # noqa: BLE001 — any failure here means the same thing
             opened = 0
         if not opened:
-            raise ValueError("This PDF is encrypted and needs a password, which this tool cannot supply.")
+            raise ValueError(
+                "This PDF is encrypted and needs a password, which this tool cannot supply."
+            )
     return reader
 
 
@@ -87,7 +89,9 @@ def _page_span(reader, first_page: int, last_page: int | None) -> tuple[int, int
     if first_page < 1:
         raise ValueError("first_page is 1-based; it must be >= 1")
     if first_page > total:
-        raise ValueError(f"first_page {first_page} is past the end — the document has {total} pages")
+        raise ValueError(
+            f"first_page {first_page} is past the end — the document has {total} pages"
+        )
 
     end = total if last_page is None else min(last_page, total)
     if end < first_page:
@@ -183,7 +187,7 @@ def extract_text(path: str, first_page: int = 1, last_page: int | None = None) -
             f"{len(empty)} of {len(pages)} requested pages held no extractable text "
             f"(page{'s' if len(empty) > 1 else ''} {listed}{', ...' if len(empty) > 20 else ''}). "
             "Those are likely scanned and need OCR rather than extraction; their `text` "
-            "is \"\" because nothing could be read, not because the page is blank."
+            'is "" because nothing could be read, not because the page is blank.'
             if empty
             else None
         ),
@@ -191,7 +195,9 @@ def extract_text(path: str, first_page: int = 1, last_page: int | None = None) -
 
 
 @mcp.tool()
-def extract_tables(path: str, first_page: int = 1, last_page: int | None = None) -> dict:
+def extract_tables(
+    path: str, first_page: int = 1, last_page: int | None = None
+) -> dict:
     """Extract tables from a PDF as rows of cells.
 
     A table read out of `extract_text` arrives as columns run together, which is
@@ -218,13 +224,21 @@ def extract_tables(path: str, first_page: int = 1, last_page: int | None = None)
                         "index": index,
                         # None means an empty cell; "" reads as a value that is
                         # there and blank, which is a different claim.
-                        "rows": [[cell if cell is not None else "" for cell in row] for row in table],
+                        "rows": [
+                            [cell if cell is not None else "" for cell in row]
+                            for row in table
+                        ],
                         "row_count": len(table),
                         "column_count": max((len(r) for r in table), default=0),
                     }
                 )
 
-    return {"path": target, "tables": tables, "count": len(tables), "truncated": truncated}
+    return {
+        "path": target,
+        "tables": tables,
+        "count": len(tables),
+        "truncated": truncated,
+    }
 
 
 @mcp.tool()
@@ -270,7 +284,9 @@ def search_text(
                 {
                     "page": number,
                     "context": " ".join(
-                        text[max(0, position - 90) : position + len(pattern) + 90].split()
+                        text[
+                            max(0, position - 90) : position + len(pattern) + 90
+                        ].split()
                     ),
                 }
             )

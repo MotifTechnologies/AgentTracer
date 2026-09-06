@@ -118,7 +118,9 @@ def write_file(path: str, content: str) -> dict:
 
 
 @mcp.tool()
-def edit_file(path: str, old_string: str, new_string: str, replace_all: bool = False) -> dict:
+def edit_file(
+    path: str, old_string: str, new_string: str, replace_all: bool = False
+) -> dict:
     """Replace an exact string in a file.
 
     Refuses unless `old_string` appears exactly once, so an edit meant for one
@@ -142,7 +144,9 @@ def edit_file(path: str, old_string: str, new_string: str, replace_all: bool = F
     count = raw.count(old)
 
     if count == 0:
-        raise ValueError(f"{old_string!r} does not appear in {target} — nothing was changed.")
+        raise ValueError(
+            f"{old_string!r} does not appear in {target} — nothing was changed."
+        )
     if count > 1 and not replace_all:
         raise ValueError(
             f"{old_string!r} appears {count} times in {target}. Include enough "
@@ -181,11 +185,13 @@ def list_directory(path: str = ".") -> dict:
         f"cd {quoted} && for entry in * .[!.]* ..?*; do "
         '[ -e "$entry" ] || [ -L "$entry" ] || continue; '
         'if [ -d "$entry" ]; then printf \'d %s\\0\' "$entry"; '
-        'else printf \'f %s\\0\' "$entry"; fi; '
+        "else printf 'f %s\\0' \"$entry\"; fi; "
         "done | base64 -w0"
     )
     if rc != 0:
-        raise FileNotFoundError(f"Could not list {target}: {(err.strip() or out.strip())[:200]}")
+        raise FileNotFoundError(
+            f"Could not list {target}: {(err.strip() or out.strip())[:200]}"
+        )
 
     entries = []
     for record in base64.b64decode(out.strip()).split(b"\0"):
@@ -215,7 +221,12 @@ def file_info(path: str) -> dict:
         raise FileNotFoundError(f"No such file or directory: {target}")
 
     size, kind, mtime = out.strip().split("|", 2)
-    return {"path": target, "size_bytes": int(size), "type": kind, "mtime_epoch": int(mtime)}
+    return {
+        "path": target,
+        "size_bytes": int(size),
+        "type": kind,
+        "mtime_epoch": int(mtime),
+    }
 
 
 @mcp.tool()
@@ -240,7 +251,9 @@ def search_files(pattern: str, path: str = ".", max_results: int = 100) -> dict:
         f"head -n {max_results}"
     )
     if rc != 0:
-        raise RuntimeError(f"Search failed in {_abs(path)}: {(err.strip() or out.strip())[:200]}")
+        raise RuntimeError(
+            f"Search failed in {_abs(path)}: {(err.strip() or out.strip())[:200]}"
+        )
 
     matches = [line for line in out.splitlines() if line]
     return {"pattern": pattern, "matches": matches, "count": len(matches)}
@@ -271,7 +284,9 @@ def search_content(pattern: str, path: str = ".", max_results: int = 100) -> dic
         f"head -n {max_results}"
     )
     if rc != 0:
-        raise RuntimeError(f"Search failed in {_abs(path)}: {(err.strip() or out.strip())[:200]}")
+        raise RuntimeError(
+            f"Search failed in {_abs(path)}: {(err.strip() or out.strip())[:200]}"
+        )
 
     matches = []
     for line in out.splitlines():
@@ -292,9 +307,13 @@ def move_file(source: str, destination: str) -> dict:
     """
     src, dst = _abs(source), _abs(destination)
     parent = dst.rsplit("/", 1)[0] or "/"
-    rc, out, err = _run(f"mkdir -p {shlex.quote(parent)} && mv {shlex.quote(src)} {shlex.quote(dst)}")
+    rc, out, err = _run(
+        f"mkdir -p {shlex.quote(parent)} && mv {shlex.quote(src)} {shlex.quote(dst)}"
+    )
     if rc != 0:
-        raise RuntimeError(f"Could not move {src}: {(err.strip() or out.strip())[:200]}")
+        raise RuntimeError(
+            f"Could not move {src}: {(err.strip() or out.strip())[:200]}"
+        )
     return {"source": src, "destination": dst}
 
 
@@ -308,7 +327,9 @@ def create_directory(path: str) -> dict:
     target = _abs(path)
     rc, out, err = _run(f"mkdir -p {shlex.quote(target)}")
     if rc != 0:
-        raise RuntimeError(f"Could not create {target}: {(err.strip() or out.strip())[:200]}")
+        raise RuntimeError(
+            f"Could not create {target}: {(err.strip() or out.strip())[:200]}"
+        )
     return {"path": target}
 
 

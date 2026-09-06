@@ -48,12 +48,16 @@ class TestEnvironmentOptions:
 
     def test_an_env_ref_resolves(self, monkeypatch):
         monkeypatch.setenv("AT_TEST_KEY", "sk-secret")
-        config = EnvironmentConfig(type="docker", image="t", options={"api_key": "env:AT_TEST_KEY"})
+        config = EnvironmentConfig(
+            type="docker", image="t", options={"api_key": "env:AT_TEST_KEY"}
+        )
 
         assert config.resolved_options() == {"api_key": "sk-secret"}
 
     def test_a_literal_still_passes_through(self):
-        config = EnvironmentConfig(type="docker", image="t", options={"user": "someone"})
+        config = EnvironmentConfig(
+            type="docker", image="t", options={"user": "someone"}
+        )
 
         assert config.resolved_options() == {"user": "someone"}
 
@@ -124,7 +128,9 @@ model:
             load_config(self._write(tmp_path, "environment: {type: dokcer, image: x}"))
 
     def test_a_backend_that_exists_still_loads(self, tmp_path):
-        config = load_config(self._write(tmp_path, "environment: {type: docker, image: x}"))
+        config = load_config(
+            self._write(tmp_path, "environment: {type: docker, image: x}")
+        )
         assert config.environment.type == "docker"
 
     def test_a_backend_option_that_cannot_be_resolved_is_refused_at_startup(

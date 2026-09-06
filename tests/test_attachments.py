@@ -19,7 +19,9 @@ class TestBinaryAttachments:
     def test_bytes_round_trip_exactly(self):
         raw = bytes(range(256))
         encoded = base64.b64encode(raw).decode()
-        with _materialized_attachments(_task(files_b64={"data/db.sqlite": encoded})) as ws:
+        with _materialized_attachments(
+            _task(files_b64={"data/db.sqlite": encoded})
+        ) as ws:
             assert (ws / "data/db.sqlite").read_bytes() == raw
 
     def test_text_and_binary_together(self):
@@ -35,7 +37,9 @@ class TestBinaryAttachments:
                 pass
 
     def test_same_path_as_text_and_binary_is_rejected(self):
-        task = _task(files={"a.bin": "x"}, files_b64={"a.bin": base64.b64encode(b"y").decode()})
+        task = _task(
+            files={"a.bin": "x"}, files_b64={"a.bin": base64.b64encode(b"y").decode()}
+        )
         with pytest.raises(ValueError, match="both text and binary"):
             with _materialized_attachments(task):
                 pass

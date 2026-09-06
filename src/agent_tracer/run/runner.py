@@ -12,7 +12,6 @@ import json
 import time
 from collections import Counter
 from dataclasses import asdict
-from pathlib import Path
 from typing import Any
 
 from rich.progress import (
@@ -38,7 +37,7 @@ from agent_tracer.orchestrators.single import SingleAgentOrchestrator
 class _TPSColumn(ProgressColumn):
     """Output tokens per second, aggregated across all concurrent tasks."""
 
-    def __init__(self, counter: "_TokenCounter") -> None:
+    def __init__(self, counter: _TokenCounter) -> None:
         super().__init__()
         self._counter = counter
 
@@ -171,7 +170,7 @@ class Runner:
                     "tokens": asdict(trajectory.token_totals),
                     "attempt": attempt,
                 }
-            except (TimeoutError, asyncio.TimeoutError):
+            except TimeoutError:
                 last_error = f"task timeout after {self.config.runner.task_timeout}s"
             except SandboxMissingBinariesError as e:
                 # Not transient: the image will not grow the binary between
@@ -184,7 +183,7 @@ class Runner:
                     "error", {"message": last_error, "attempt": attempt}
                 )
                 break
-            except Exception as e:  # noqa: BLE001 — record and retry per policy
+            except Exception as e:
                 last_error = describe_exception(e)
 
             trajectory.add_event("error", {"message": last_error, "attempt": attempt})

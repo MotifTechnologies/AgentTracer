@@ -152,7 +152,7 @@ def release_image(env_type: str, image: str) -> bool:
         return False
     try:
         return bool(hook(image))
-    except Exception:  # noqa: BLE001 - cleanup is never worth failing a run over
+    except Exception:
         return False
 
 

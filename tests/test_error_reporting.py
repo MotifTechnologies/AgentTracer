@@ -1,5 +1,3 @@
-import pytest
-
 from agent_tracer.run.runner import describe_exception
 
 

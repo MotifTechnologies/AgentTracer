@@ -59,7 +59,7 @@ class TestDiscovery:
 
     def test_missing_manifest_fails_fast(self, tmp_path):
         (tmp_path / "broken").mkdir()
-        with pytest.raises(ConfigError, match="no mcp.json"):
+        with pytest.raises(ConfigError, match=r"no mcp\.json"):
             discover_mcp_servers(_cfg(tmp_path))
 
     def test_name_dir_mismatch_fails_fast(self, tmp_path):

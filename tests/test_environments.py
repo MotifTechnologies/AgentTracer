@@ -311,7 +311,7 @@ class TestByteTransfer:
     def test_a_missing_file_says_so(self, sandbox):
         access, root = sandbox
 
-        with pytest.raises(FileNotFoundError, match="nope.bin"):
+        with pytest.raises(FileNotFoundError, match=r"nope\.bin"):
             read_bytes(access, str(root / "nope.bin"))
 
     def test_an_oversized_write_is_refused_before_it_is_attempted(self, sandbox):
@@ -394,7 +394,7 @@ class TestByteTransfer:
         monkeypatch.setattr(
             access, "exec", full_disk_after_the_first_chunk, raising=False
         )
-        with pytest.raises(OSError, match="book.xlsx"):
+        with pytest.raises(OSError, match=r"book\.xlsx"):
             write_bytes(access, str(target), b"z" * (WRITE_CHUNK_BYTES * 3))
 
         assert target.read_bytes() == b"the original workbook"
@@ -471,7 +471,7 @@ class TestContaminatedStdout:
             access, monkeypatch, lambda c, out: out if "wc " in c else self.BANNER + out
         )
 
-        with pytest.raises(OSError, match="book.xlsx"):
+        with pytest.raises(OSError, match=r"book\.xlsx"):
             read_bytes(access, str(target))
 
     def test_a_banner_before_the_size_names_the_file(self, sandbox, monkeypatch):
@@ -483,7 +483,7 @@ class TestContaminatedStdout:
             access, monkeypatch, lambda c, out: self.BANNER + out if "wc " in c else out
         )
 
-        with pytest.raises(OSError, match="book.xlsx"):
+        with pytest.raises(OSError, match=r"book\.xlsx"):
             read_bytes(access, str(target))
 
     def test_a_short_transfer_is_caught_by_the_size_already_fetched(
@@ -497,7 +497,7 @@ class TestContaminatedStdout:
             access, monkeypatch, lambda c, out: out if "wc " in c else out.strip()[:-8]
         )
 
-        with pytest.raises(OSError, match="book.xlsx"):
+        with pytest.raises(OSError, match=r"book\.xlsx"):
             read_bytes(access, str(target))
 
     def test_base64_wrapped_at_76_columns_still_arrives_exact(

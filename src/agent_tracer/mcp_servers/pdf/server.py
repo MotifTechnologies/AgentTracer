@@ -74,7 +74,7 @@ def _reader(raw: bytes):
         # and costs one call to rule out.
         try:
             opened = reader.decrypt("")
-        except Exception:  # noqa: BLE001 — any failure here means the same thing
+        except Exception:
             opened = 0
         if not opened:
             raise ValueError(

@@ -1,9 +1,6 @@
 import asyncio
-import json
 from collections import Counter
 from pathlib import Path
-
-import pytest
 
 from agent_tracer.config.schema import (
     DatasetConfig,

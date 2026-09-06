@@ -22,7 +22,7 @@ from agent_tracer.mcp import _mcp2_compat
 
 _mcp2_compat.apply()  # must precede the stirrup import below
 
-from stirrup.tools.mcp import MCPConfig, MCPToolProvider
+from stirrup.tools.mcp import MCPConfig, MCPToolProvider  # noqa: E402, I001 — must follow apply(), do not hoist
 
 if TYPE_CHECKING:
     from agent_tracer.mcp.discovery import MCPManifest

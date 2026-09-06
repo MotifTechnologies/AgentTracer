@@ -13,9 +13,10 @@ import binascii
 import shlex
 import shutil
 import tempfile
+from collections.abc import Iterator
 from contextlib import AsyncExitStack, contextmanager
 from pathlib import Path
-from typing import Annotated, Any, Iterator
+from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
 from stirrup import Agent, Tool, ToolResult, ToolUseCountMetadata

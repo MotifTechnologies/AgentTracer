@@ -1,0 +1,86 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Mondays 03:00 UTC. New CVEs land against unchanged code, so the audit
+    # has to run on a clock and not only on a diff.
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bandit:
+    name: bandit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked --dev
+      # HIGH and MEDIUM fail. LOW is reported and does not: subprocess imports
+      # and asserts are LOW, and this project runs agent code by design.
+      - name: bandit (fails on medium+)
+        run: uv run bandit -c pyproject.toml -r src -q --severity-level medium
+      - name: bandit (full report, advisory)
+        if: always()
+        run: uv run bandit -c pyproject.toml -r src -q || true
+
+  audit:
+    name: pip-audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked --dev
+      # Audit what uv.lock actually resolves, not what happens to be installed.
+      # --no-emit-project drops agent-tracer itself, which is not on PyPI.
+      - name: Export the locked dependency set
+        run: uv export --no-emit-project --format requirements-txt --no-dev -o requirements-audit.txt
+      - name: pip-audit
+        run: |
+          mapfile -t IGNORE < <(
+            grep -oE '^(PYSEC|GHSA|CVE)-[A-Za-z0-9.-]+' .github/pip-audit-ignore.txt \
+              | sed 's/^/--ignore-vuln=/'
+          )
+          echo "Accepted exceptions: ${#IGNORE[@]}"
+          uv run pip-audit --strict --progress-spinner off "${IGNORE[@]}" -r requirements-audit.txt
+      # Unfiltered, so an accepted exception that upstream has since fixed
+      # shows up instead of quietly ageing in the ignore file.
+      - name: Full report (advisory)
+        if: always()
+        run: uv run pip-audit --progress-spinner off -r requirements-audit.txt || true
+
+  licenses:
+    name: licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked --dev
+      # This project is Apache-2.0 and a derivative of Stirrup; a strong
+      # copyleft dependency arriving unnoticed would relicense the deliverable.
+      - run: uv run python .github/scripts/check_licenses.py
+
+  secrets:
+    name: secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # gitleaks scans history, not just the tip
+      - name: gitleaks
+        run: |
+          VERSION=8.30.1
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          ./gitleaks git --no-banner --redact --exit-code 1 .

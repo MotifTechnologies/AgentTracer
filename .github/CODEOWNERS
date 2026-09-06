@@ -1,13 +1,13 @@
 # Fallback owner for everything.
-*                       @junhyeok-motech
+*                       @junhyeok-motech @gihuncho
 
 # Attribution and licence terms — Apache-2.0 obligations for a Stirrup
 # derivative. Never merge a change here without an explicit review.
-/LICENSE                @junhyeok-motech
-/NOTICE                 @junhyeok-motech
+/LICENSE                @junhyeok-motech @gihuncho
+/NOTICE                 @junhyeok-motech @gihuncho
 
 # The gates themselves. A PR that edits its own checks needs a second pair
 # of eyes more than any other.
-/.github/               @junhyeok-motech
-/pyproject.toml         @junhyeok-motech
-/uv.lock                @junhyeok-motech
+/.github/               @junhyeok-motech @gihuncho
+/pyproject.toml         @junhyeok-motech @gihuncho
+/uv.lock                @junhyeok-motech @gihuncho

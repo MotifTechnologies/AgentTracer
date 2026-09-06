@@ -1,0 +1,6 @@
+# Revisions that only moved whitespace. Ignore them in blame:
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub picks this file up on its own.
+
+# Reformat with ruff format
+e7bd258f850b4dfd07583ed50378e053d58ec3b4

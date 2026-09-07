@@ -56,9 +56,15 @@ class CustomDataset:
 
 
 def get_dataset(name: str, path: Path | None):
-    if name == "custom":
-        return CustomDataset(path)  # path validated in config schema
-    if name == "swebench_local":
+    if name in ("custom", "swebench_local"):
+        if path is None:
+            # DatasetConfig._custom_needs_path rejects this first, so a run
+            # never reaches here. Kept because it is what makes `path` a Path
+            # for the constructors below rather than a Path | None.
+            raise ConfigError(f"dataset: {name} dataset requires 'path' (JSONL file)")
+        if name == "custom":
+            return CustomDataset(path)
+
         from agent_tracer.datasets.swebench_local import SWEBenchLocalDataset
 
         return SWEBenchLocalDataset(path)

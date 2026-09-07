@@ -24,6 +24,7 @@ uv run ruff check src tests          # lint
 uv run ruff format --check src tests # formatting
 uv run pytest -q                     # tests
 uv lock --check                      # uv.lock matches pyproject.toml
+uv run mypy                          # types
 uv run bandit -c pyproject.toml -r src -q --severity-level medium
 uv export --no-emit-project --format requirements-txt --no-dev -o requirements-audit.txt
 grep -oE '^(PYSEC|GHSA|CVE)-[A-Za-z0-9.-]+' .github/pip-audit-ignore.txt \
@@ -47,6 +48,7 @@ lint findings.
 | `licenses` | A dependency whose licence is incompatible with Apache-2.0 |
 | `secrets` | A credential anywhere in the history, not just the tip |
 | `guard` | Confidential paths, real `.env` files, oversized files |
+| `typecheck` | A new mypy error in `src/` |
 
 `pip-audit` runs against `uv.lock`, not against whatever happens to be
 installed. Vulnerabilities we cannot fix are listed with a reason in
@@ -54,10 +56,11 @@ installed. Vulnerabilities we cannot fix are listed with a reason in
 back by `moviepy 2.2.1`, which pins `pillow<12.0`. Add to that file only
 when upstream leaves no fix, and delete entries as soon as one lands.
 
-`typecheck` runs mypy but is **advisory**: nine findings predate it, all of the
-"validated in the config schema, invisible to mypy" kind. Please don't add to
-them. Once they are worked off, drop `continue-on-error` in `ci.yml` and add
-the job to the required checks.
+`typecheck` runs mypy over `src/` and blocks like the rest. It is clean; keep
+it that way. Where a value is guaranteed by a Pydantic validator that mypy
+cannot see, narrow it explicitly rather than reaching for `# type: ignore` —
+`get_dataset` in `datasets/custom.py` and the transport branches in
+`mcp/discovery.py` are the pattern to copy.
 
 ## Rules specific to this repository
 

@@ -65,7 +65,9 @@ class _Backend(Protocol):
     def describe(
         self, config: EnvironmentConfig, provider: Any
     ) -> dict[str, str | None]: ...
-    def attach(self, sandbox_id: str, options: dict[str, str]) -> SandboxAccess: ...
+    def attach(
+        self, sandbox_id: str | None, options: dict[str, str]
+    ) -> SandboxAccess: ...
     # Optional: backends with no image store simply do not define it.
     def release_image(self, image: str) -> bool: ...
 
@@ -122,13 +124,15 @@ def describe(config: EnvironmentConfig, provider: Any) -> dict[str, str | None]:
 
 
 def attach(
-    env_type: str, sandbox_id: str, options: dict[str, str] | None = None
+    env_type: str, sandbox_id: str | None, options: dict[str, str] | None = None
 ) -> SandboxAccess:
     """Reach a sandbox that already exists, from another process.
 
     Args:
         env_type: The `environment.type` the sandbox was created under.
-        sandbox_id: The `sandbox_id` that `describe` reported for it.
+        sandbox_id: The `sandbox_id` that `describe` reported for it, which
+            is None for a backend that has no id — `local` is the whole
+            machine, and attaching to it is a no-op.
         options: Backend-specific extras — the in-sandbox user, an API key, a
             host alias. `environment.options` with its `env:` references
             already resolved (see `EnvironmentConfig.resolved_options`), so

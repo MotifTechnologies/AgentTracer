@@ -44,6 +44,7 @@ case, so it is reported instead.
 import datetime as dt
 import io
 import re
+from typing import Any
 
 from mcp.server import MCPServer
 
@@ -386,7 +387,8 @@ def find_cells(
     needle = pattern.lower()
 
     names = [_sheet(formulas, sheet).title] if sheet else formulas.sheetnames
-    matches, scanned, exhausted = [], 0, False
+    matches: list[dict[str, Any]] = []
+    scanned, exhausted = 0, False
     try:
         for name in names:
             if exhausted or len(matches) >= max_results:

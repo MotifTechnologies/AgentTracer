@@ -319,6 +319,10 @@ def build_stirrup_mcp_config(
                 if declared
                 else _package_path()
             )
+            # MCPManifest's validator refuses a stdio manifest without a
+            # command; narrowed here because `transport` does not narrow it.
+            if m.command is None:  # pragma: no cover
+                raise ConfigError(f"mcp[{name}]: stdio server has no command")
             servers[name] = StdioServerConfig(
                 command=m.command,
                 args=m.args,
@@ -334,6 +338,9 @@ def build_stirrup_mcp_config(
                 )
                 for key, val in m.headers.items()
             }
+            # Same for an http manifest without a url.
+            if m.url is None:  # pragma: no cover
+                raise ConfigError(f"mcp[{name}]: http server has no url")
             servers[name] = StreamableHttpServerConfig(
                 url=m.url,
                 headers=headers or None,

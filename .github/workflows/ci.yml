@@ -49,12 +49,8 @@ jobs:
       - run: uv lock --check
 
   typecheck:
-    name: typecheck (advisory)
+    name: typecheck
     runs-on: ubuntu-latest
-    # Advisory until the 9 known findings are worked off; see CONTRIBUTING.md.
-    # Flip to blocking by deleting this line and adding the job to the
-    # required checks in the ruleset.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.0.1

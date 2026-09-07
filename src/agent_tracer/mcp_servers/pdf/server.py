@@ -26,6 +26,7 @@ metadata and page geometry, pdfplumber for tables, which pypdf does not do.
 """
 
 import io
+from typing import Any
 
 from mcp.server import MCPServer
 
@@ -274,7 +275,7 @@ def search_text(
     start, end, truncated = _page_span(reader, first_page, last_page)
     needle = pattern if case_sensitive else pattern.lower()
 
-    matches = []
+    matches: list[dict[str, Any]] = []
     for number in range(start, end + 1):
         text = reader.pages[number - 1].extract_text() or ""
         haystack = text if case_sensitive else text.lower()

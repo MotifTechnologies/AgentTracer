@@ -63,7 +63,6 @@ ignore = ["E501"]
 python_version = "3.13"
 files = ["src"]
 ignore_missing_imports = true    # stirrup and mcp ship no stubs
-# Advisory in CI while the 9 known findings are worked off; see CONTRIBUTING.md.
 
 [tool.bandit]
 # Tests exercise the unsafe paths on purpose; scanning them reports the setup,

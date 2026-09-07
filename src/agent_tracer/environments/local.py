@@ -58,5 +58,5 @@ class _LocalAccess:
         return proc.returncode, proc.stdout, proc.stderr
 
 
-def attach(sandbox_id: str, options: dict[str, str]) -> _LocalAccess:
+def attach(sandbox_id: str | None, options: dict[str, str]) -> _LocalAccess:
     return _LocalAccess()

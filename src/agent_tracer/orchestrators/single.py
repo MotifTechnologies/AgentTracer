@@ -13,9 +13,10 @@ import binascii
 import shlex
 import shutil
 import tempfile
+from collections.abc import Iterator
 from contextlib import AsyncExitStack, contextmanager
 from pathlib import Path
-from typing import Annotated, Any, Iterator
+from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
 from stirrup import Agent, Tool, ToolResult, ToolUseCountMetadata
@@ -39,7 +40,9 @@ class SubmitParams(BaseModel):
 
 
 async def _submit_executor(params: SubmitParams) -> ToolResult[ToolUseCountMetadata]:
-    return ToolResult(content=params.answer, metadata=ToolUseCountMetadata(), success=True)
+    return ToolResult(
+        content=params.answer, metadata=ToolUseCountMetadata(), success=True
+    )
 
 
 SUBMIT_TOOL: Tool[SubmitParams, ToolUseCountMetadata] = Tool(
@@ -86,7 +89,9 @@ def _materialized_attachments(task: Task) -> Iterator[Path | None]:
 
     overlap = text_files.keys() & binary_files.keys()
     if overlap:
-        raise ValueError(f"attachment declared as both text and binary: {sorted(overlap)}")
+        raise ValueError(
+            f"attachment declared as both text and binary: {sorted(overlap)}"
+        )
 
     root = Path(tempfile.mkdtemp(prefix="agent_tracer_attach_"))
     try:
@@ -96,7 +101,9 @@ def _materialized_attachments(task: Task) -> Iterator[Path | None]:
             try:
                 raw = base64.b64decode(encoded, validate=True)
             except (binascii.Error, ValueError) as e:
-                raise ValueError(f"attachment {rel_path!r}: invalid base64 ({e})") from e
+                raise ValueError(
+                    f"attachment {rel_path!r}: invalid base64 ({e})"
+                ) from e
             _resolved_target(root, rel_path).write_bytes(raw)
         yield root
     finally:
@@ -154,14 +161,18 @@ class SingleAgentOrchestrator:
         on_tokens: TokenCallback | None = None,
     ) -> dict[str, Any]:
         agent_id = self.config.agent.role or "agent-0"
-        recorder = TrajectoryRecorder(trajectory, agent_id=agent_id, on_tokens=on_tokens)
+        recorder = TrajectoryRecorder(
+            trajectory, agent_id=agent_id, on_tokens=on_tokens
+        )
 
         from agent_tracer.environments import build_provider
 
         # Fixed once per task, then used for both the sandbox and the sandbox
         # description: an MCP server told a different working directory than the
         # one the agent got would resolve every relative path into nothing.
-        update: dict[str, Any] = {"working_dir": self.config.environment.task_working_dir()}
+        update: dict[str, Any] = {
+            "working_dir": self.config.environment.task_working_dir()
+        }
         task_image = (task.metadata or {}).get("docker_image")
         if task_image:
             # A task that ships its own image needs that image: its premise is a
@@ -195,13 +206,18 @@ class SingleAgentOrchestrator:
             if self.config.tools.web:
                 from stirrup.tools.web import WebToolProvider
 
-                tools.append(WebToolProvider(brave_api_key=self.config.tools.resolved_brave_key()))
+                tools.append(
+                    WebToolProvider(
+                        brave_api_key=self.config.tools.resolved_brave_key()
+                    )
+                )
             if self.mcp_config is not None:
                 from agent_tracer.mcp.provider import TimeoutMCPToolProvider
 
                 tools.append(
                     TimeoutMCPToolProvider(
-                        self._task_mcp_config(exec_provider, env_config), self.manifests or {}
+                        self._task_mcp_config(exec_provider, env_config),
+                        self.manifests or {},
                     )
                 )
 
@@ -252,7 +268,9 @@ class SingleAgentOrchestrator:
         )
 
         desc = describe(env_config, provider)
-        access = attach(env_config.type, desc["sandbox_id"], env_config.resolved_options())
+        access = attach(
+            env_config.type, desc["sandbox_id"], env_config.resolved_options()
+        )
         # One probe for the lot: names are validated to be plain (no shell) at
         # manifest load, and quoted anyway.
         probe = "; ".join(
@@ -326,7 +344,9 @@ class SingleAgentOrchestrator:
         if finish_params is not None:
             submission: str | None = finish_params.answer
             exit_status = "submitted"
-            trajectory.add_event("submission", {"answer": submission}, agent_id=agent_id)
+            trajectory.add_event(
+                "submission", {"answer": submission}, agent_id=agent_id
+            )
         else:
             submission = None
             exit_status = "max_turns"

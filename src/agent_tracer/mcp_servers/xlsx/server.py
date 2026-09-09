@@ -44,6 +44,7 @@ case, so it is reported instead.
 import datetime as dt
 import io
 import re
+from typing import Any
 
 from mcp.server import MCPServer
 
@@ -97,21 +98,27 @@ def _workbook(raw: bytes, *, data_only: bool, read_only: bool = False):
     from openpyxl.utils.exceptions import InvalidFileException
 
     try:
-        return openpyxl.load_workbook(io.BytesIO(raw), data_only=data_only, read_only=read_only)
+        return openpyxl.load_workbook(
+            io.BytesIO(raw), data_only=data_only, read_only=read_only
+        )
     except InvalidFileException as exc:
         raise ValueError(
             f"Not a readable .xlsx workbook: {exc}. openpyxl does not read the older "
             ".xls format — convert it with soffice first."
         ) from exc
     except Exception as exc:  # zipfile/xml/KeyError all mean "this is not a workbook"
-        raise ValueError(f"Could not open the workbook: {type(exc).__name__}: {exc}") from exc
+        raise ValueError(
+            f"Could not open the workbook: {type(exc).__name__}: {exc}"
+        ) from exc
 
 
 def _sheet(workbook, name: str | None):
     if name is None:
         return workbook[workbook.sheetnames[0]]
     if name not in workbook.sheetnames:
-        raise ValueError(f"No sheet named {name!r}. This workbook has: {', '.join(workbook.sheetnames)}")
+        raise ValueError(
+            f"No sheet named {name!r}. This workbook has: {', '.join(workbook.sheetnames)}"
+        )
     return workbook[name]
 
 
@@ -200,7 +207,9 @@ def _extent(sheet) -> tuple[int, int]:
     return sheet.max_row or 1, sheet.max_column or 1
 
 
-def _window(sheet, cell_range: str | None, budget: int) -> tuple[tuple[int, int, int, int], bool]:
+def _window(
+    sheet, cell_range: str | None, budget: int
+) -> tuple[tuple[int, int, int, int], bool]:
     """The rectangle to visit, clipped to `budget` coordinates.
 
     Derived before anything is read, so an explicit "A1:CZ20000" costs no more
@@ -219,7 +228,9 @@ def _window(sheet, cell_range: str | None, budget: int) -> tuple[tuple[int, int,
         top, left = top or 1, left or 1
         bottom, right = bottom or rows, right or columns
         if bottom < top or right < left:
-            raise ValueError(f"Could not read range {cell_range!r}: it ends before it starts")
+            raise ValueError(
+                f"Could not read range {cell_range!r}: it ends before it starts"
+            )
     else:
         top, left, bottom, right = 1, 1, rows, columns
 
@@ -270,7 +281,9 @@ def list_sheets(path: str) -> dict:
 
 
 @mcp.tool()
-def read_range(path: str, sheet: str | None = None, cell_range: str | None = None) -> dict:
+def read_range(
+    path: str, sheet: str | None = None, cell_range: str | None = None
+) -> dict:
     """Read cells, with both their formulas and their computed values.
 
     At most `MAX_CELLS_PER_CALL` coordinates are visited, empty ones included,
@@ -291,16 +304,24 @@ def read_range(path: str, sheet: str | None = None, cell_range: str | None = Non
     try:
         formula_sheet = _sheet(formulas, sheet)
         value_sheet = _sheet(values, sheet)
-        (top, left, bottom, right), truncated = _window(formula_sheet, cell_range, MAX_CELLS_PER_CALL)
+        (top, left, bottom, right), truncated = _window(
+            formula_sheet, cell_range, MAX_CELLS_PER_CALL
+        )
         box = {"min_row": top, "min_col": left, "max_row": bottom, "max_col": right}
 
         cells, uncomputed = [], 0
-        rows = zip(formula_sheet.iter_rows(**box), value_sheet.iter_rows(**box), strict=False)
+        rows = zip(
+            formula_sheet.iter_rows(**box), value_sheet.iter_rows(**box), strict=False
+        )
         for number, (frow, vrow) in enumerate(rows, start=top):
-            for letter, (fcell, vcell) in enumerate(zip(frow, vrow, strict=False), start=left):
+            for letter, (fcell, vcell) in enumerate(
+                zip(frow, vrow, strict=False), start=left
+            ):
                 if fcell.value is None and vcell.value is None:
                     continue
-                is_formula = isinstance(fcell.value, str) and fcell.value.startswith("=")
+                is_formula = isinstance(fcell.value, str) and fcell.value.startswith(
+                    "="
+                )
                 if is_formula and vcell.value is None:
                     uncomputed += 1
                 cells.append(
@@ -342,7 +363,9 @@ def read_range(path: str, sheet: str | None = None, cell_range: str | None = Non
 
 
 @mcp.tool()
-def find_cells(path: str, pattern: str, sheet: str | None = None, max_results: int = 50) -> dict:
+def find_cells(
+    path: str, pattern: str, sheet: str | None = None, max_results: int = 50
+) -> dict:
     """Find cells whose value or formula contains a string.
 
     For locating a label or figure without reading the whole sheet.
@@ -364,7 +387,8 @@ def find_cells(path: str, pattern: str, sheet: str | None = None, max_results: i
     needle = pattern.lower()
 
     names = [_sheet(formulas, sheet).title] if sheet else formulas.sheetnames
-    matches, scanned, exhausted = [], 0, False
+    matches: list[dict[str, Any]] = []
+    scanned, exhausted = 0, False
     try:
         for name in names:
             if exhausted or len(matches) >= max_results:
@@ -376,7 +400,9 @@ def find_cells(path: str, pattern: str, sheet: str | None = None, max_results: i
             for number, (frow, vrow) in enumerate(paired, start=1):
                 if exhausted or len(matches) >= max_results:
                     break
-                for letter, (fcell, vcell) in enumerate(zip(frow, vrow, strict=False), start=1):
+                for letter, (fcell, vcell) in enumerate(
+                    zip(frow, vrow, strict=False), start=1
+                ):
                     if len(matches) >= max_results:
                         break
                     if scanned >= MAX_CELLS_SCANNED:
@@ -384,8 +410,12 @@ def find_cells(path: str, pattern: str, sheet: str | None = None, max_results: i
                         break
                     scanned += 1
                     haystacks = [fcell.value, vcell.value]
-                    if any(h is not None and needle in str(h).lower() for h in haystacks):
-                        is_formula = isinstance(fcell.value, str) and fcell.value.startswith("=")
+                    if any(
+                        h is not None and needle in str(h).lower() for h in haystacks
+                    ):
+                        is_formula = isinstance(
+                            fcell.value, str
+                        ) and fcell.value.startswith("=")
                         matches.append(
                             {
                                 "sheet": name,
@@ -415,7 +445,11 @@ def find_cells(path: str, pattern: str, sheet: str | None = None, max_results: i
 
 
 @mcp.tool()
-def write_cells(path: str, cells: dict[str, str | int | float | bool | None], sheet: str | None = None) -> dict:
+def write_cells(
+    path: str,
+    cells: dict[str, str | int | float | bool | None],
+    sheet: str | None = None,
+) -> dict:
     """Set specific cells in an existing workbook, leaving the rest alone.
 
     Writing rebuilds the whole file, so it refuses when the workbook holds
@@ -440,7 +474,7 @@ def write_cells(path: str, cells: dict[str, str | int | float | bool | None], sh
         sheet: Sheet name. Defaults to the first sheet.
     """
     if not cells:
-        raise ValueError("No cells given — pass at least one, e.g. {\"B2\": 4200}")
+        raise ValueError('No cells given — pass at least one, e.g. {"B2": 4200}')
 
     access, workdir = _sandbox()
     target = resolve(path, workdir)

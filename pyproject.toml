@@ -25,8 +25,13 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "bandit>=1.9.4",
+    "mypy>=2.3.1",
+    "pip-audit>=2.10.1",
+    "pip-licenses>=5.5.5",
     "pytest>=9.1.1",
     "python-pptx>=1.0.2",
+    "ruff>=0.16.6",
 ]
 
 [project.scripts]
@@ -39,3 +44,27 @@ agent-tracer = "agent_tracer.run.cli:main"
 # with no __init__.py.
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "SIM", "B", "RUF"]
+# The formatter owns line width. E501 then only fires on what the formatter
+# cannot split — long string literals, URLs — so selecting it is pure noise.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# The comment there names the LINE SEPARATOR and PARAGRAPH SEPARATOR
+# characters it is about; "fixing" them to spaces erases what it documents.
+"src/agent_tracer/mcp_servers/filesystem/server.py" = ["RUF003"]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["src"]
+ignore_missing_imports = true    # stirrup and mcp ship no stubs
+
+[tool.bandit]
+# Tests exercise the unsafe paths on purpose; scanning them reports the setup,
+# not the product.
+exclude_dirs = ["tests", ".venv"]

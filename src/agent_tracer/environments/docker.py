@@ -80,7 +80,9 @@ class _DockerAccess:
         return proc.returncode, proc.stdout, proc.stderr
 
 
-def attach(sandbox_id: str, options: dict[str, str]) -> _DockerAccess:
+def attach(sandbox_id: str | None, options: dict[str, str]) -> _DockerAccess:
+    if sandbox_id is None:
+        raise ValueError("docker: attach needs a container id, describe() gave none")
     return _DockerAccess(sandbox_id, options.get("user"))
 
 

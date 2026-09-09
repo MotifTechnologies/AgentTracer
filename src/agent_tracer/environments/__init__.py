@@ -62,8 +62,12 @@ class SandboxAccess(Protocol):
 
 class _Backend(Protocol):
     def build(self, config: EnvironmentConfig, *, task_id: str | None) -> Any: ...
-    def describe(self, config: EnvironmentConfig, provider: Any) -> dict[str, str | None]: ...
-    def attach(self, sandbox_id: str, options: dict[str, str]) -> SandboxAccess: ...
+    def describe(
+        self, config: EnvironmentConfig, provider: Any
+    ) -> dict[str, str | None]: ...
+    def attach(
+        self, sandbox_id: str | None, options: dict[str, str]
+    ) -> SandboxAccess: ...
     # Optional: backends with no image store simply do not define it.
     def release_image(self, image: str) -> bool: ...
 
@@ -78,7 +82,9 @@ def _load(env_type: str) -> _Backend:
         if entry.name == env_type:
             return entry.load()
 
-    available = sorted({*BUILTIN, *(e.name for e in entry_points(group=ENTRY_POINT_GROUP))})
+    available = sorted(
+        {*BUILTIN, *(e.name for e in entry_points(group=ENTRY_POINT_GROUP))}
+    )
     raise ConfigError(
         f"environment: unknown type {env_type!r} (available: {', '.join(available)}). "
         "A backend that is not built in has to be installed — it registers itself "
@@ -117,12 +123,16 @@ def describe(config: EnvironmentConfig, provider: Any) -> dict[str, str | None]:
     return _load(config.type).describe(config, provider)
 
 
-def attach(env_type: str, sandbox_id: str, options: dict[str, str] | None = None) -> SandboxAccess:
+def attach(
+    env_type: str, sandbox_id: str | None, options: dict[str, str] | None = None
+) -> SandboxAccess:
     """Reach a sandbox that already exists, from another process.
 
     Args:
         env_type: The `environment.type` the sandbox was created under.
-        sandbox_id: The `sandbox_id` that `describe` reported for it.
+        sandbox_id: The `sandbox_id` that `describe` reported for it, which
+            is None for a backend that has no id — `local` is the whole
+            machine, and attaching to it is a no-op.
         options: Backend-specific extras — the in-sandbox user, an API key, a
             host alias. `environment.options` with its `env:` references
             already resolved (see `EnvironmentConfig.resolved_options`), so
@@ -146,7 +156,7 @@ def release_image(env_type: str, image: str) -> bool:
         return False
     try:
         return bool(hook(image))
-    except Exception:  # noqa: BLE001 - cleanup is never worth failing a run over
+    except Exception:
         return False
 
 
@@ -183,7 +193,9 @@ def resolve(path: str, workdir: str) -> str:
     the path out in full. The sandbox is the boundary, not this function.
     """
     if not path:
-        raise ValueError("path is empty — name a file, or '.' for the working directory")
+        raise ValueError(
+            "path is empty — name a file, or '.' for the working directory"
+        )
     if path.startswith("~"):
         # `~` is the sandbox's home directory, which this has no way to learn.
         # Paths are shell-quoted on the way out, so it survives as a literal:
@@ -254,7 +266,9 @@ def read_bytes(access: SandboxAccess, path: str, *, timeout_s: float = 60) -> by
     # noisy reply would read "Last login: ... 2026" as a 2026-byte file.
     fields = out.split()
     if len(fields) != 1 or not fields[0].isdigit():
-        raise OSError(f"Could not size {path}: {out.strip()[:200]!r} is not a byte count. {_CONTAMINATED}")
+        raise OSError(
+            f"Could not size {path}: {out.strip()[:200]!r} is not a byte count. {_CONTAMINATED}"
+        )
     size = int(fields[0])
     if size > MAX_READ_BYTES:
         raise ValueError(
@@ -271,7 +285,9 @@ def read_bytes(access: SandboxAccess, path: str, *, timeout_s: float = 60) -> by
     try:
         data = base64.b64decode("".join(out.split()), validate=True)
     except binascii.Error as exc:
-        raise OSError(f"Could not decode {path} out of the sandbox: {exc}. {_CONTAMINATED}") from exc
+        raise OSError(
+            f"Could not decode {path} out of the sandbox: {exc}. {_CONTAMINATED}"
+        ) from exc
     if len(data) != size:
         raise OSError(
             f"Read {len(data)} bytes of {path}, which is {size} — the transfer was "
@@ -290,7 +306,9 @@ def _parent(path: str) -> str:
     return head or ("/" if sep else ".")
 
 
-def write_bytes(access: SandboxAccess, path: str, data: bytes, *, timeout_s: float = 60) -> None:
+def write_bytes(
+    access: SandboxAccess, path: str, data: bytes, *, timeout_s: float = 60
+) -> None:
     """Put exact bytes into a sandbox that only offers `exec`.
 
     Sent in `WRITE_CHUNK_BYTES` pieces, because the encoded payload rides in the
@@ -317,12 +335,17 @@ def write_bytes(access: SandboxAccess, path: str, data: bytes, *, timeout_s: flo
     staged = shlex.quote(f"{path}.agent-tracer.{os.getpid()}")
     prologue = f"mkdir -p {shlex.quote(_parent(path))} && "
     # One chunk even for no bytes at all, so an empty file is still created.
-    chunks = [data[at : at + WRITE_CHUNK_BYTES] for at in range(0, len(data), WRITE_CHUNK_BYTES)] or [b""]
+    chunks = [
+        data[at : at + WRITE_CHUNK_BYTES]
+        for at in range(0, len(data), WRITE_CHUNK_BYTES)
+    ] or [b""]
 
     def run(script: str) -> None:
         rc, out, err = access.exec(script, timeout_s=timeout_s)
         if rc != 0:
-            raise OSError(f"Could not write {path}: {(err.strip() or out.strip())[:200]}")
+            raise OSError(
+                f"Could not write {path}: {(err.strip() or out.strip())[:200]}"
+            )
 
     try:
         for index, chunk in enumerate(chunks):

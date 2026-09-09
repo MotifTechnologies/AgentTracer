@@ -19,7 +19,9 @@ class TestBinaryAttachments:
     def test_bytes_round_trip_exactly(self):
         raw = bytes(range(256))
         encoded = base64.b64encode(raw).decode()
-        with _materialized_attachments(_task(files_b64={"data/db.sqlite": encoded})) as ws:
+        with _materialized_attachments(
+            _task(files_b64={"data/db.sqlite": encoded})
+        ) as ws:
             assert (ws / "data/db.sqlite").read_bytes() == raw
 
     def test_text_and_binary_together(self):
@@ -30,21 +32,29 @@ class TestBinaryAttachments:
             assert (ws / "img/logo.png").read_bytes() == b"\x89PNG\r\n"
 
     def test_invalid_base64_is_rejected(self):
-        with pytest.raises(ValueError, match="invalid base64"):
-            with _materialized_attachments(_task(files_b64={"x.bin": "not base64!!"})):
-                pass
+        with (
+            pytest.raises(ValueError, match="invalid base64"),
+            _materialized_attachments(_task(files_b64={"x.bin": "not base64!!"})),
+        ):
+            pass
 
     def test_same_path_as_text_and_binary_is_rejected(self):
-        task = _task(files={"a.bin": "x"}, files_b64={"a.bin": base64.b64encode(b"y").decode()})
-        with pytest.raises(ValueError, match="both text and binary"):
-            with _materialized_attachments(task):
-                pass
+        task = _task(
+            files={"a.bin": "x"}, files_b64={"a.bin": base64.b64encode(b"y").decode()}
+        )
+        with (
+            pytest.raises(ValueError, match="both text and binary"),
+            _materialized_attachments(task),
+        ):
+            pass
 
     def test_binary_path_escape_rejected(self):
         encoded = base64.b64encode(b"x").decode()
-        with pytest.raises(ValueError, match="escapes workspace"):
-            with _materialized_attachments(_task(files_b64={"../evil.bin": encoded})):
-                pass
+        with (
+            pytest.raises(ValueError, match="escapes workspace"),
+            _materialized_attachments(_task(files_b64={"../evil.bin": encoded})),
+        ):
+            pass
 
 
 class TestMaterializedAttachments:
@@ -69,9 +79,11 @@ class TestMaterializedAttachments:
         assert not saved.exists()
 
     def test_path_escape_rejected(self):
-        with pytest.raises(ValueError, match="escapes workspace"):
-            with _materialized_attachments(_task({"../evil.txt": "x"})):
-                pass
+        with (
+            pytest.raises(ValueError, match="escapes workspace"),
+            _materialized_attachments(_task({"../evil.txt": "x"})),
+        ):
+            pass
 
     def test_cleanup_on_error(self):
         saved = {}

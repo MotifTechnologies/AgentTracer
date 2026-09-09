@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +18,7 @@ TRAJECTORY_FORMAT = "agent-tracer-1.0"
 
 
 def utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 @dataclass
@@ -57,7 +57,9 @@ class Trajectory:
     timestamp_end: str | None = None
     token_totals: TokenTotals = field(default_factory=TokenTotals)
 
-    def add_event(self, event_type: str, data: dict[str, Any], agent_id: str | None = None) -> Event:
+    def add_event(
+        self, event_type: str, data: dict[str, Any], agent_id: str | None = None
+    ) -> Event:
         event = Event(
             event_id=f"e{len(self.events) + 1:04d}",
             event_type=event_type,

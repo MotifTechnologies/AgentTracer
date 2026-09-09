@@ -79,6 +79,12 @@ cleaning up first costs nothing.
 uv run pytest tests/
 ```
 
+## Contributing
+
+See `CONTRIBUTING.md` for the checks a pull request has to pass and the paths
+that must never be committed. `SECURITY.md` covers where the sandbox boundary
+is and how to report a vulnerability.
+
 ## License
 
 Apache License 2.0 — see `LICENSE`.

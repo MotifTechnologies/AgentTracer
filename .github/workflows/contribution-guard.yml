@@ -1,0 +1,72 @@
+name: Contribution guard
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Files this PR touches
+        id: diff
+        run: |
+          git diff --name-only --diff-filter=d \
+            "${{ github.event.pull_request.base.sha }}...${{ github.sha }}" > changed.txt
+          echo "--- changed ---"; cat changed.txt
+
+      # .gitignore is advice; `git add -f` walks straight past it. These paths
+      # carry the government-programme documents and internal specs, and a
+      # push that publishes one cannot be taken back.
+      - name: No confidential or generated paths
+        run: |
+          if grep -nE '^(confidential/|DATA_BUILDER/|.*\.pptx$|results/|datasample/)' changed.txt; then
+            echo "::error::The paths above are excluded from this repository. See CONTRIBUTING.md."
+            exit 1
+          fi
+
+      - name: No .env files other than the sample
+        run: |
+          if grep -nE '(^|/)\.env($|\.)' changed.txt | grep -v '\.env\.sample$'; then
+            echo "::error::Only .env.sample is tracked. Never commit a real .env."
+            exit 1
+          fi
+
+      # The sample is tracked, so it is the one .env-shaped file a secret can
+      # ride in on. Every key in it must be left empty.
+      - name: .env.sample carries no values
+        run: |
+          if grep -qE '^\s*[A-Z_][A-Z0-9_]*=.+' .env.sample; then
+            echo "::error::.env.sample must list keys with empty values only."
+            grep -nE '^\s*[A-Z_][A-Z0-9_]*=.+' .env.sample
+            exit 1
+          fi
+
+      # Apache-2.0 §4(d): this is a derivative of Stirrup and the attribution
+      # has to survive. Changing it is allowed, silently is not.
+      - name: Attribution changes need a reviewer
+        run: |
+          if grep -qE '^(NOTICE|LICENSE)$' changed.txt; then
+            echo "::warning::NOTICE/LICENSE changed — Apache-2.0 attribution. Needs an explicit reviewer sign-off."
+            echo "NOTICE_TOUCHED=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: No large files
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            size=$(stat -c%s "$f")
+            if [ "$size" -gt 1048576 ]; then
+              echo "::error file=$f::$((size/1024)) KiB exceeds the 1 MiB limit. Diagrams belong in resource/ as exported PNGs; data ships from Hugging Face."
+              fail=1
+            fi
+          done < changed.txt
+          exit $fail

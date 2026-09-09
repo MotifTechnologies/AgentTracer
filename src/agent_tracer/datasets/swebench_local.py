@@ -56,16 +56,21 @@ class SWEBenchLocalDataset:
             try:
                 row = json.loads(line)
             except json.JSONDecodeError as e:
-                raise ConfigError(f"dataset: {self.path}:{lineno} invalid JSON: {e}") from e
+                raise ConfigError(
+                    f"dataset: {self.path}:{lineno} invalid JSON: {e}"
+                ) from e
             missing = [k for k in _REQUIRED if not row.get(k)]
             if missing:
-                raise ConfigError(f"dataset: {self.path}:{lineno} missing keys: {missing}")
+                raise ConfigError(
+                    f"dataset: {self.path}:{lineno} missing keys: {missing}"
+                )
             tasks.append(
                 Task(
                     task_id=row["instance_id"],
                     input=_TASK_INSTRUCTIONS.format(
                         repo=row["repo"],
-                        repo_path=row.get("repo_path") or f"/{row['repo'].split('/')[-1]}",
+                        repo_path=row.get("repo_path")
+                        or f"/{row['repo'].split('/')[-1]}",
                         base_commit=row["base_commit"],
                         problem_statement=row["problem_statement"],
                     ),

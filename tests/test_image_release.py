@@ -1,9 +1,6 @@
 import asyncio
-import json
 from collections import Counter
 from pathlib import Path
-
-import pytest
 
 from agent_tracer.config.schema import (
     DatasetConfig,
@@ -21,7 +18,9 @@ def _runner(tmp_path: Path, **env) -> Runner:
     tasks.write_text('{"task_id": "t1", "input": "x"}\n')
     config = RunConfig(
         dataset=DatasetConfig(name="custom", path=tasks),
-        model=ModelConfig(model_name="m", base_url="http://x/v1", api_key="k", reasoning_key="none"),
+        model=ModelConfig(
+            model_name="m", base_url="http://x/v1", api_key="k", reasoning_key="none"
+        ),
         environment=EnvironmentConfig(type="docker", image="base:1", **env),
         output=OutputConfig(path=tmp_path / "out"),
     )
@@ -29,7 +28,9 @@ def _runner(tmp_path: Path, **env) -> Runner:
 
 
 def _task(image=None):
-    return Task(task_id="t", input="x", metadata={"docker_image": image} if image else {})
+    return Task(
+        task_id="t", input="x", metadata={"docker_image": image} if image else {}
+    )
 
 
 class TestWhichImagesGetReleased:
@@ -46,7 +47,9 @@ class TestReleaseTiming:
 
             calls = []
             original = environments.release_image
-            environments.release_image = lambda env_type, image: calls.append(image) or True
+            environments.release_image = lambda env_type, image: (
+                calls.append(image) or True
+            )
             try:
                 await runner._release_when_last(task, remaining, asyncio.Lock())
             finally:

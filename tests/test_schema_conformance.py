@@ -28,7 +28,9 @@ def _traj():
                 "event_type": "model_response",
                 "data": {
                     "content": None,
-                    "tool_calls": [{"tool_call_id": "c1", "name": "f", "arguments": {"x": 1}}],
+                    "tool_calls": [
+                        {"tool_call_id": "c1", "name": "f", "arguments": {"x": 1}}
+                    ],
                 },
                 "agent_id": "a",
             },

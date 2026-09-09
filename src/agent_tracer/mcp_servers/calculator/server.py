@@ -24,6 +24,7 @@ told 0.1 + 0.2 is 0.30000000000000004.
 import ast
 import math
 import operator
+from collections.abc import Callable
 from decimal import Decimal, DivisionByZero, Inexact, InvalidOperation, getcontext
 
 from mcp.server import MCPServer
@@ -35,6 +36,7 @@ mcp = MCPServer(name="calculator", version="0.1.0")
 #: answer looked right and was not. Wide enough now for the arithmetic a task
 #: actually asks for; what still does not fit is reported, not hidden.
 getcontext().prec = 200
+
 
 def _divmod(left: Decimal, right: Decimal) -> tuple[Decimal, Decimal]:
     """Python's `divmod`, which Decimal's does not match.
@@ -51,7 +53,9 @@ def _divmod(left: Decimal, right: Decimal) -> tuple[Decimal, Decimal]:
     return quotient, remainder
 
 
-_BINARY = {
+# Annotated so the lookups below are calls to a known signature rather than
+# to whatever join mypy infers across operator.* and the two lambdas.
+_BINARY: dict[type[ast.operator], Callable[[Decimal, Decimal], Decimal]] = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
     ast.Mult: operator.mul,
@@ -60,7 +64,10 @@ _BINARY = {
     ast.Pow: operator.pow,
     ast.FloorDiv: lambda a, b: _divmod(a, b)[0],
 }
-_UNARY = {ast.UAdd: operator.pos, ast.USub: operator.neg}
+_UNARY: dict[type[ast.unaryop], Callable[[Decimal], Decimal]] = {
+    ast.UAdd: operator.pos,
+    ast.USub: operator.neg,
+}
 
 #: Guards `**`. Decimal will happily try 9**9**9 and take the process with it.
 MAX_EXPONENT = 1000

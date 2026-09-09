@@ -79,7 +79,9 @@ def _patch_streamable_http() -> None:
         ):
             yield streams[0], streams[1], _no_session_id
 
-    streamable_http.streamablehttp_client = streamablehttp_client
+    # Installing the 1.x name onto the 2.x module is the whole point of the
+    # shim, so the attribute is missing by definition.
+    streamable_http.streamablehttp_client = streamablehttp_client  # type: ignore[attr-defined]
     _applied.append("streamablehttp_client")
 
 

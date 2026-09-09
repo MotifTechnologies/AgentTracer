@@ -46,7 +46,9 @@ class ReasoningKeyChatClient(ChatCompletionsClient):
     def __init__(self, *args: Any, reasoning_key: str, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         if not reasoning_key:
-            raise ValueError("reasoning_key is required ('none' for non-reasoning models)")
+            raise ValueError(
+                "reasoning_key is required ('none' for non-reasoning models)"
+            )
         self._reasoning_key = reasoning_key
 
     async def generate(
@@ -110,7 +112,9 @@ class ReasoningKeyChatClient(ChatCompletionsClient):
         output_tokens = usage.completion_tokens if usage else 0
         reasoning_tokens = 0
         if usage and getattr(usage, "completion_tokens_details", None):
-            reasoning_tokens = getattr(usage.completion_tokens_details, "reasoning_tokens", 0) or 0
+            reasoning_tokens = (
+                getattr(usage.completion_tokens_details, "reasoning_tokens", 0) or 0
+            )
 
         return AssistantMessage(
             blocks=blocks,

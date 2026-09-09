@@ -55,6 +55,7 @@ class TestCallTimeout:
     def test_the_model_is_told_rather_than_the_task_ended(self, monkeypatch):
         """The manifest's own description of what a timeout is: a tool result
         the agent loop continues from. Raising would lose the trajectory."""
+
         async def never(self, server, tool_name, arguments):
             await asyncio.sleep(30)
 

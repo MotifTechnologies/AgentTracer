@@ -136,7 +136,13 @@ class EnvironmentConfig(StrictModel):
 
     # Plausible places work would live, so the varied path still reads as a
     # real one. The suffix is what makes it unlearnable.
-    _WORKDIR_ROOTS = ("/workspace", "/srv/job", "/opt/run", "/data/task", "/home/agent/work")
+    _WORKDIR_ROOTS = (
+        "/workspace",
+        "/srv/job",
+        "/opt/run",
+        "/data/task",
+        "/home/agent/work",
+    )
 
     def task_working_dir(self) -> str:
         """The working directory for one task — randomised unless pinned."""
@@ -222,7 +228,9 @@ class DatasetConfig(StrictModel):
     @model_validator(mode="after")
     def _custom_needs_path(self) -> DatasetConfig:
         if self.name in ("custom", "swebench_local") and self.path is None:
-            raise ConfigError(f"dataset: {self.name} dataset requires 'path' (JSONL file)")
+            raise ConfigError(
+                f"dataset: {self.name} dataset requires 'path' (JSONL file)"
+            )
         return self
 
 

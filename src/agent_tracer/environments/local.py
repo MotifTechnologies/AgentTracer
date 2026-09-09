@@ -46,7 +46,10 @@ class _LocalAccess:
     def exec(self, command: str, timeout_s: float = 120) -> tuple[int, str, str]:
         proc = subprocess.run(
             command,
-            shell=True,
+            # This backend is the unsandboxed development one (see the
+            # module docstring); handing it a shell is what it exists to
+            # do. Real isolation is environments/docker.py.
+            shell=True,  # nosec B602
             capture_output=True,
             text=True,
             timeout=timeout_s + 30,
@@ -55,5 +58,5 @@ class _LocalAccess:
         return proc.returncode, proc.stdout, proc.stderr
 
 
-def attach(sandbox_id: str, options: dict[str, str]) -> _LocalAccess:
+def attach(sandbox_id: str | None, options: dict[str, str]) -> _LocalAccess:
     return _LocalAccess()

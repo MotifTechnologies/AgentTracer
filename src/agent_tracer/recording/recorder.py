@@ -10,9 +10,17 @@ aggregate throughput across concurrent tasks.
 from __future__ import annotations
 
 import json
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-from stirrup import AssistantMessage, ReasoningBlock, TextBlock, ToolCall, ToolMessage, UserMessage
+from stirrup import (
+    AssistantMessage,
+    ReasoningBlock,
+    TextBlock,
+    ToolCall,
+    ToolMessage,
+    UserMessage,
+)
 from stirrup.utils.logging import AgentLoggerBase
 
 from agent_tracer.core.trajectory import Trajectory
@@ -118,8 +126,13 @@ class TrajectoryRecorder(AgentLoggerBase):
                     "answer": usage.answer,
                 },
                 "duration_s": (
-                    round(assistant_message.request_end_time - assistant_message.request_start_time, 3)
-                    if assistant_message.request_end_time and assistant_message.request_start_time
+                    round(
+                        assistant_message.request_end_time
+                        - assistant_message.request_start_time,
+                        3,
+                    )
+                    if assistant_message.request_end_time
+                    and assistant_message.request_start_time
                     else None
                 ),
             },
@@ -135,7 +148,9 @@ class TrajectoryRecorder(AgentLoggerBase):
     def tool_result(self, tool_message: ToolMessage) -> None:
         duration = None
         if tool_message.tool_end_time and tool_message.tool_start_time:
-            duration = round(tool_message.tool_end_time - tool_message.tool_start_time, 3)
+            duration = round(
+                tool_message.tool_end_time - tool_message.tool_start_time, 3
+            )
         self.trajectory.add_event(
             "tool_result",
             {
@@ -181,10 +196,14 @@ class TrajectoryRecorder(AgentLoggerBase):
 
     def warning(self, message: str, *args: object) -> None:
         self.trajectory.add_event(
-            "warning", {"message": message % args if args else message}, agent_id=self.agent_id
+            "warning",
+            {"message": message % args if args else message},
+            agent_id=self.agent_id,
         )
 
     def error(self, message: str, *args: object) -> None:
         self.trajectory.add_event(
-            "error", {"message": message % args if args else message}, agent_id=self.agent_id
+            "error",
+            {"message": message % args if args else message},
+            agent_id=self.agent_id,
         )

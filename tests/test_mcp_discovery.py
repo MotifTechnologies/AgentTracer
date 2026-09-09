@@ -59,7 +59,7 @@ class TestDiscovery:
 
     def test_missing_manifest_fails_fast(self, tmp_path):
         (tmp_path / "broken").mkdir()
-        with pytest.raises(ConfigError, match="no mcp.json"):
+        with pytest.raises(ConfigError, match=r"no mcp\.json"):
             discover_mcp_servers(_cfg(tmp_path))
 
     def test_name_dir_mismatch_fails_fast(self, tmp_path):
@@ -111,7 +111,10 @@ class TestRequiresBinaries:
         """An http server has no sandbox to reach — same key-not-contents rule
         as headers on stdio."""
         _server(
-            tmp_path, "web", transport="http", url="https://example.com/mcp",
+            tmp_path,
+            "web",
+            transport="http",
+            url="https://example.com/mcp",
             requires_binaries=[],
         )
         with pytest.raises(ConfigError, match="requires_binaries"):
@@ -141,7 +144,10 @@ class TestPackagedManifests:
         )
 
         for path in sorted(root.glob("*/mcp.json")):
-            errors = [e.message for e in validator.iter_errors(json.loads(path.read_text("utf-8")))]
+            errors = [
+                e.message
+                for e in validator.iter_errors(json.loads(path.read_text("utf-8")))
+            ]
             assert not errors, f"{path}: {errors}"
 
 
@@ -240,9 +246,13 @@ class TestStirrupMapping:
         _server(tmp_path, "alpha", env={"AGENT_TRACER_ENV_TYPE": "local"})
         manifests = discover_mcp_servers(_cfg(tmp_path))
 
-        env = build_stirrup_mcp_config(
-            manifests, tmp_path, {"AGENT_TRACER_ENV_TYPE": "docker"}
-        ).mcp_servers["alpha"].env
+        env = (
+            build_stirrup_mcp_config(
+                manifests, tmp_path, {"AGENT_TRACER_ENV_TYPE": "docker"}
+            )
+            .mcp_servers["alpha"]
+            .env
+        )
 
         assert env["AGENT_TRACER_ENV_TYPE"] == "local"
 
@@ -256,15 +266,19 @@ class TestSandboxOptions:
     """
 
     def _sandbox(self) -> dict[str, str]:
-        return sandbox_env(env_type="docker", sandbox_id="sbx_1", options={"api_key": "secret"})
+        return sandbox_env(
+            env_type="docker", sandbox_id="sbx_1", options={"api_key": "secret"}
+        )
 
     def test_a_server_that_does_not_attach_is_not_given_the_key(self, tmp_path):
         _server(tmp_path, "calculator")
         manifests = discover_mcp_servers(_cfg(tmp_path))
 
-        env = build_stirrup_mcp_config(
-            manifests, tmp_path, self._sandbox()
-        ).mcp_servers["calculator"].env
+        env = (
+            build_stirrup_mcp_config(manifests, tmp_path, self._sandbox())
+            .mcp_servers["calculator"]
+            .env
+        )
 
         assert "AGENT_TRACER_OPTIONS" not in env, env
 
@@ -274,9 +288,11 @@ class TestSandboxOptions:
         _server(tmp_path, "calculator")
         manifests = discover_mcp_servers(_cfg(tmp_path))
 
-        env = build_stirrup_mcp_config(
-            manifests, tmp_path, self._sandbox()
-        ).mcp_servers["calculator"].env
+        env = (
+            build_stirrup_mcp_config(manifests, tmp_path, self._sandbox())
+            .mcp_servers["calculator"]
+            .env
+        )
 
         assert env["AGENT_TRACER_ENV_TYPE"] == "docker"
         assert env["AGENT_TRACER_SANDBOX_ID"] == "sbx_1"
@@ -285,9 +301,11 @@ class TestSandboxOptions:
         _server(tmp_path, "filesystem", sandbox_options=True)
         manifests = discover_mcp_servers(_cfg(tmp_path))
 
-        env = build_stirrup_mcp_config(
-            manifests, tmp_path, self._sandbox()
-        ).mcp_servers["filesystem"].env
+        env = (
+            build_stirrup_mcp_config(manifests, tmp_path, self._sandbox())
+            .mcp_servers["filesystem"]
+            .env
+        )
 
         assert json.loads(env["AGENT_TRACER_OPTIONS"]) == {"api_key": "secret"}
 
@@ -306,9 +324,15 @@ class TestHttpServers:
 
     def test_env_refs_in_headers_are_resolved(self, tmp_path, monkeypatch):
         monkeypatch.setenv("TEST_DOCS_KEY", "secret-value")
-        _server(tmp_path, "docs", transport="http", url="https://example.test/mcp",
-                headers={"Authorization": "env:TEST_DOCS_KEY", "X-Fixed": "literal"},
-                command=None, args=[])
+        _server(
+            tmp_path,
+            "docs",
+            transport="http",
+            url="https://example.test/mcp",
+            headers={"Authorization": "env:TEST_DOCS_KEY", "X-Fixed": "literal"},
+            command=None,
+            args=[],
+        )
         manifests = discover_mcp_servers(_cfg(tmp_path))
 
         cfg = build_stirrup_mcp_config(manifests, tmp_path)
@@ -316,14 +340,23 @@ class TestHttpServers:
         headers = cfg.mcp_servers["docs"].headers
         assert headers == {"Authorization": "secret-value", "X-Fixed": "literal"}
 
-    def test_an_unset_ref_refuses_the_run_before_a_task_starts(self, tmp_path, monkeypatch):
+    def test_an_unset_ref_refuses_the_run_before_a_task_starts(
+        self, tmp_path, monkeypatch
+    ):
         """`env` was resolved in the startup loop and `headers` only in the
         per-task rebuild, so an unresolvable header secret came back as one
         task's swallowed error — retried, recorded, and repeated for every task
         — instead of a run that refuses to start."""
         monkeypatch.delenv("TEST_MISSING_KEY", raising=False)
-        _server(tmp_path, "docs", transport="http", url="https://example.test/mcp",
-                headers={"Authorization": "env:TEST_MISSING_KEY"}, command=None, args=[])
+        _server(
+            tmp_path,
+            "docs",
+            transport="http",
+            url="https://example.test/mcp",
+            headers={"Authorization": "env:TEST_MISSING_KEY"},
+            command=None,
+            args=[],
+        )
 
         with pytest.raises(ConfigError, match="TEST_MISSING_KEY"):
             discover_mcp_servers(_cfg(tmp_path))
@@ -345,8 +378,18 @@ class TestHttpServers:
             discover_mcp_servers(_cfg(tmp_path))
 
     def test_call_timeout_carries_to_the_http_client(self, tmp_path):
-        _server(tmp_path, "docs", transport="http", url="https://example.test/mcp",
-                call_timeout_s=42, command=None, args=[])
+        _server(
+            tmp_path,
+            "docs",
+            transport="http",
+            url="https://example.test/mcp",
+            call_timeout_s=42,
+            command=None,
+            args=[],
+        )
         manifests = discover_mcp_servers(_cfg(tmp_path))
 
-        assert build_stirrup_mcp_config(manifests, tmp_path).mcp_servers["docs"].timeout == 42
+        assert (
+            build_stirrup_mcp_config(manifests, tmp_path).mcp_servers["docs"].timeout
+            == 42
+        )

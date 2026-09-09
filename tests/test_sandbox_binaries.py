@@ -83,7 +83,9 @@ class TestNothingDeclared:
     def test_no_requirements_probes_nothing(self):
         """Early return, proven by handing it a config no probe could use:
         describe on an unknown backend would raise before any exec."""
-        orch = SingleAgentOrchestrator(None, None, manifests={"alpha": _manifest("alpha", [])})
+        orch = SingleAgentOrchestrator(
+            None, None, manifests={"alpha": _manifest("alpha", [])}
+        )
         env_config = EnvironmentConfig(type="no-such-backend", image="x")
         asyncio.run(orch._check_sandbox_binaries(env_config, None, None))
 

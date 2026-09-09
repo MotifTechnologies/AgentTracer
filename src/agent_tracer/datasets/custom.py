@@ -28,9 +28,13 @@ class CustomDataset:
             try:
                 row = json.loads(line)
             except json.JSONDecodeError as e:
-                raise ConfigError(f"dataset: {self.path}:{lineno} invalid JSON: {e}") from e
+                raise ConfigError(
+                    f"dataset: {self.path}:{lineno} invalid JSON: {e}"
+                ) from e
             if "task_id" not in row or "input" not in row:
-                raise ConfigError(f"dataset: {self.path}:{lineno} requires task_id and input")
+                raise ConfigError(
+                    f"dataset: {self.path}:{lineno} requires task_id and input"
+                )
             tasks.append(
                 Task(
                     task_id=str(row["task_id"]),
@@ -52,10 +56,18 @@ class CustomDataset:
 
 
 def get_dataset(name: str, path: Path | None):
-    if name == "custom":
-        return CustomDataset(path)  # path validated in config schema
-    if name == "swebench_local":
+    if name in ("custom", "swebench_local"):
+        if path is None:
+            # DatasetConfig._custom_needs_path rejects this first, so a run
+            # never reaches here. Kept because it is what makes `path` a Path
+            # for the constructors below rather than a Path | None.
+            raise ConfigError(f"dataset: {name} dataset requires 'path' (JSONL file)")
+        if name == "custom":
+            return CustomDataset(path)
+
         from agent_tracer.datasets.swebench_local import SWEBenchLocalDataset
 
         return SWEBenchLocalDataset(path)
-    raise ConfigError(f"dataset: unknown dataset {name!r} (supported: custom, swebench_local)")
+    raise ConfigError(
+        f"dataset: unknown dataset {name!r} (supported: custom, swebench_local)"
+    )

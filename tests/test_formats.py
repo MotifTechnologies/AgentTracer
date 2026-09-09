@@ -1,9 +1,13 @@
 import json
 
-from agent_tracer.export.formats import record_to_grpo_row, records_to_grpo_jsonl, records_to_hf_dataset
-from agent_tracer.export.sharegpt import trajectory_to_record
-
 from test_export import _traj
+
+from agent_tracer.export.formats import (
+    record_to_grpo_row,
+    records_to_grpo_jsonl,
+    records_to_hf_dataset,
+)
+from agent_tracer.export.sharegpt import trajectory_to_record
 
 
 def _records():
@@ -46,4 +50,9 @@ class TestHFDataset:
         assert dataset.num_rows == 1
         row = dataset[0]
         assert row["source"]["provider"] is None
-        assert [m["role"] for m in row["conversations"]] == ["system", "user", "assistant", "tool"]
+        assert [m["role"] for m in row["conversations"]] == [
+            "system",
+            "user",
+            "assistant",
+            "tool",
+        ]

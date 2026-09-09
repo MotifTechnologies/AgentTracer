@@ -9,7 +9,9 @@ class TestSampleIndexedTrajectories:
         assert path.name == "t1.traj.json"
 
     def test_samples_do_not_overwrite_each_other(self, tmp_path):
-        paths = {Trajectory(task_id="t1", sample_idx=i).save(tmp_path) for i in range(3)}
+        paths = {
+            Trajectory(task_id="t1", sample_idx=i).save(tmp_path) for i in range(3)
+        }
         assert len(paths) == 3
         assert len(list(tmp_path.glob("*.traj.json"))) == 3
 
@@ -38,7 +40,10 @@ class TestCheckpointKeyedOnSample:
         config = RunConfig(
             dataset=DatasetConfig(name="custom", path=tasks),
             model=ModelConfig(
-                model_name="m", base_url="http://x/v1", api_key="k", reasoning_key="none"
+                model_name="m",
+                base_url="http://x/v1",
+                api_key="k",
+                reasoning_key="none",
             ),
             runner=RunnerConfig(samples_per_task=samples),
             output=OutputConfig(path=tmp_path / "out"),
@@ -47,13 +52,17 @@ class TestCheckpointKeyedOnSample:
 
     def test_a_finished_sample_is_skipped_but_its_siblings_are_not(self, tmp_path):
         runner = self._runner(
-            tmp_path, [{"task_id": "t1", "sample_idx": 0, "exit_status": "submitted"}], samples=3
+            tmp_path,
+            [{"task_id": "t1", "sample_idx": 0, "exit_status": "submitted"}],
+            samples=3,
         )
         assert runner._completed_samples() == {("t1", 0)}
 
     def test_errors_are_retried(self, tmp_path):
         runner = self._runner(
-            tmp_path, [{"task_id": "t1", "sample_idx": 1, "exit_status": "error"}], samples=2
+            tmp_path,
+            [{"task_id": "t1", "sample_idx": 1, "exit_status": "error"}],
+            samples=2,
         )
         assert runner._completed_samples() == set()
 

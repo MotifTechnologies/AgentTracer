@@ -234,7 +234,9 @@ def load_records(
             skipped += 1
             continue
         records.append(
-            trajectory_to_record(traj, name=name, split=split, subset=subset, category=category)
+            trajectory_to_record(
+                traj, name=name, split=split, subset=subset, category=category
+            )
         )
     records, stats = select_records(
         records, require_correct=require_correct, best_per_task=best_per_task

@@ -6,6 +6,19 @@ record structured trajectories, exportable as SFT/RL training datasets.
 Built on [Stirrup](https://github.com/ArtificialAnalysis/Stirrup) (agent loop,
 code-exec sandbox, MCP client) — see `NOTICE` for attribution.
 
+## Overview
+
+`agent-tracer` is a Python framework for collecting agent execution traces
+for model training and evaluation. It connects an OpenAI-compatible model
+endpoint to task datasets, tools, and execution environments, then records
+the model's reasoning, responses, and tool calls as structured events.
+
+- Run tasks with Docker isolation and configurable MCP tools.
+- Configure models, datasets, and runs through YAML and CLI overrides.
+- Resume interrupted runs by skipping completed samples.
+- Export trajectories as ShareGPT, Hugging Face, or GRPO datasets for
+  supervised fine-tuning (SFT) and reinforcement learning (RL).
+
 ## How it works
 
 ![One task, end to end](resource/agent-tracer-overall.png)
@@ -81,9 +94,13 @@ uv run pytest tests/
 
 ## Contributing
 
-See `CONTRIBUTING.md` for the checks a pull request has to pass and the paths
-that must never be committed. `SECURITY.md` covers where the sandbox boundary
-is and how to report a vulnerability.
+See the [contributing guide](CONTRIBUTING.md) for setup, issue reporting, the
+pull request workflow, and required checks. All participants are expected to
+follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+Use the [issue templates](https://github.com/MotifTechnologies/motif-agent-tracer-v2/issues/new/choose)
+to report a bug or request a feature. For vulnerabilities, follow the private
+reporting instructions in the [security policy](SECURITY.md).
 
 ## License
 

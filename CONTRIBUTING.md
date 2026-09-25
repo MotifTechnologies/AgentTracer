@@ -3,17 +3,52 @@
 Thanks for taking the time. This is an Apache-2.0 project built on
 [Stirrup](https://github.com/ArtificialAnalysis/Stirrup); see `NOTICE`.
 
+All participants are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Reporting bugs and proposing changes
+
+Search existing issues and pull requests before opening a new one. Use the
+[issue templates](https://github.com/MotifTechnologies/motif-agent-tracer-v2/issues/new/choose)
+for bug reports and feature requests. For a bug, include a minimal
+reproduction, expected and actual behavior, and your environment. For a
+feature, describe the problem, proposed behavior, and alternatives.
+
+Remove API keys, private datasets, and other sensitive information from
+configuration snippets, logs, and trajectories before sharing them. Report
+security vulnerabilities privately using [SECURITY.md](SECURITY.md), rather
+than through an issue.
+
+For a substantial change, open an issue first so maintainers can discuss the
+scope and approach. Small fixes and documentation improvements can go
+directly to a pull request.
+
 ## Getting set up
+
+Install Python 3.13 or newer and `uv`, then clone the repository (or your fork)
+and enter its directory.
 
 ```bash
 uv sync              # runtime + dev tools, resolved from uv.lock
-uv run pytest -q     # 206 tests, ~4 seconds, no Docker needed
-uv run pre-commit install   # optional; runs the fast checks before each commit
+uv run pytest -q     # no Docker needed
+uvx pre-commit install   # optional; installs the pre-commit hook
 ```
 
 Docker is only needed to *run* an agent, not to test the code — the suite fakes
 the sandbox. `cp .env.sample .env` and fill in `VLLM_API_KEY` when you want to
 run one for real.
+
+## Opening a pull request
+
+1. Create a branch from the latest `main`. Use a fork if you do not have
+   permission to push a branch to this repository.
+2. Keep the change focused. Update documentation and add or update tests
+   when behavior changes.
+3. Run the applicable checks below. For documentation-only changes, check
+   links and formatting; explain any skipped checks in the pull request.
+4. Commit and push your branch, then open a pull request targeting `main`.
+   Fill out the template with the problem, resulting behavior, related
+   issues, and validation results.
+5. Address review feedback and resolve required CI failures before merge.
 
 ## Run the gates before you push
 

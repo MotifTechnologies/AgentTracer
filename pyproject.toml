@@ -24,8 +24,12 @@ requires = ["uv_build>=0.12.15,<0.13.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
+compliance = [
+    "cyclonedx-bom==7.5.0",
+]
 dev = [
     "bandit>=1.9.4",
+    "license-expression==30.4.4",
     "mypy>=2.3.1",
     "pip-audit>=2.10.1",
     "pip-licenses>=5.5.5",

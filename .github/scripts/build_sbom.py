@@ -63,6 +63,30 @@ def generate(scope: str, target: Path, output: Path, *, project: bool = False) -
     if project:
         command.extend(["--pyproject", str(ROOT / "pyproject.toml")])
     run(*command)
+    # CycloneDX 7.5 does not gather this package's nested PEP 639 license files.
+    # Keep the original declaration and append every installed notice as evidence.
+    bundle = json.loads(
+        subprocess.check_output(
+            [
+                str(python_in(target)),
+                str(ROOT / ".github/scripts/collect_license_files.py"),
+            ],
+            cwd=ROOT,
+            text=True,
+        )
+    )
+    if bundle:
+        bom = json.loads(path.read_text("utf-8"))
+        matches = [
+            component
+            for component in bom["components"]
+            if (component["name"], component["version"])
+            == (bundle["name"], bundle["version"])
+        ]
+        if len(matches) != 1:
+            raise ValueError("Collected license bundle lacks a unique SBOM component")
+        matches[0].setdefault("licenses", []).extend(bundle["licenses"])
+        path.write_text(json.dumps(bom, indent=2) + "\n", encoding="utf-8")
     return {
         "scope": scope,
         "file": path.name,
@@ -93,6 +117,8 @@ def main() -> int:
                 ROOT / "pyproject.toml",
                 Path(__file__),
                 ROOT / ".github/scripts/check_licenses.py",
+                ROOT / ".github/scripts/collect_license_files.py",
+                *sorted((ROOT / ".github/license-reviews").glob("*.json")),
                 *scripts,
             ]
         },

@@ -59,9 +59,11 @@ declarations satisfy policy, not that all distribution obligations are met.
 
 `python-dateutil`'s generic `Dual License` metadata has a version-specific
 mapping backed by the SHA-256 of the inspected distributed LICENSE; a changed
-version or text requires review. The PDF MCP's `pypdfium2` dependency declares
-`BSD-3-Clause, Apache-2.0, dependency licenses`. That unresolved third-party
-scope remains `unknown` and fails the gate until reviewed; it is not ignored.
+version or text requires review. The PDF MCP's `pypdfium2` dependency retains
+its original composite declaration. Its complete installed notice directory
+is attached to the SBOM and compared against the exact reviewed version and
+file hash sets. Changed or incomplete evidence fails the gate. See
+[the wheel review and distribution obligations](pypdfium2-license-review.md).
 
 Docker/OS packages, binaries bundled inside wheels, copied source licenses,
 external services, seed data and generated dataset/API rights are outside this

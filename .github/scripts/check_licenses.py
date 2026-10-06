@@ -70,6 +70,43 @@ REVIEWED_TEXTS = {
     ),
 }
 
+REVIEWED_BUNDLES = [
+    json.loads(path.read_text("utf-8"))
+    for path in sorted((Path(__file__).parents[1] / "license-reviews").glob("*.json"))
+]
+
+
+def reviewed_bundle(component: dict, declared: str) -> dict | None:
+    """Approve only the exact reviewed package, declaration and complete file set."""
+    files = {}
+    for choice in component.get("licenses", []):
+        info = choice.get("license", {})
+        prefix = "declared license file: "
+        if not info.get("name", "").startswith(prefix):
+            continue
+        name = info["name"][len(prefix) :]
+        if name in files:
+            return None
+        text = info.get("text", {})
+        try:
+            content = text.get("content", "").encode("utf-8")
+            if text.get("encoding") == "base64":
+                content = base64.b64decode(content, validate=True)
+            elif text.get("encoding"):
+                return None
+        except (ValueError, UnicodeError):
+            return None
+        files[name] = hashlib.sha256(content).hexdigest()
+    for review in REVIEWED_BUNDLES:
+        if (
+            (component["name"], component.get("version"), declared)
+            == (review["name"], review["version"], review["declaration"])
+            and files
+            and files in review["file_sets"]
+        ):
+            return {"reference": review["reference"], "files_sha256": files}
+    return None
+
 
 def reviewed_expression(component: dict, declared: str) -> str:
     review = REVIEWED_TEXTS.get((component["name"], component.get("version"), declared))
@@ -143,9 +180,13 @@ def component_verdict(component: dict) -> tuple[str, list[dict]]:
         verdict = (
             "allowed" if value in LEGACY_CATEGORIES else expression_verdict(normalized)
         )
-        declarations.append(
-            {"declared": value, "normalized": normalized, "verdict": verdict}
-        )
+        review = reviewed_bundle(component, value.strip())
+        if review is not None:
+            verdict = "allowed"
+        declaration = {"declared": value, "normalized": normalized, "verdict": verdict}
+        if review is not None:
+            declaration["review"] = review
+        declarations.append(declaration)
     verdicts = {d["verdict"] for d in declarations}
     if "blocked" in verdicts:
         return "blocked", declarations

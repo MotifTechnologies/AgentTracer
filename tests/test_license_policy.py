@@ -167,3 +167,107 @@ def test_generic_dependency_license_declaration_stays_unknown():
         ],
     }
     assert policy.component_verdict(sample)[0] == "unknown"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "none",
+        "missing",
+        "extra",
+        "modified",
+        "changed_hash",
+        "duplicate",
+        "version",
+        "declaration",
+        "encoding",
+    ],
+)
+def test_reviewed_bundle_requires_complete_unchanged_evidence(monkeypatch, change):
+    import base64
+
+    content = b"fixture notice"
+    declared = "fixture combined declaration"
+    files = {"BUILD_LICENSES/notice.txt": hashlib.sha256(content).hexdigest()}
+    monkeypatch.setattr(
+        policy,
+        "REVIEWED_BUNDLES",
+        [
+            {
+                "name": "example",
+                "version": "1.0",
+                "declaration": declared,
+                "reference": "docs/fixture.md",
+                "file_sets": [files],
+            }
+        ],
+    )
+    sample = component(
+        [
+            {"license": {"name": declared}},
+            {
+                "license": {
+                    "name": "declared license file: BUILD_LICENSES/notice.txt",
+                    "text": {
+                        "encoding": "base64",
+                        "content": base64.b64encode(content).decode(),
+                    },
+                }
+            },
+        ]
+    )
+    if change == "missing":
+        sample["licenses"].pop()
+    elif change == "extra":
+        sample["licenses"].append(
+            {
+                "license": {
+                    "name": "declared license file: new.txt",
+                    "text": {"content": "MIT"},
+                }
+            }
+        )
+    elif change == "modified":
+        sample["licenses"][1]["license"]["text"]["content"] = "invalid base64!"
+    elif change == "changed_hash":
+        sample["licenses"][1]["license"]["text"]["content"] = base64.b64encode(
+            b"changed notice"
+        ).decode()
+    elif change == "duplicate":
+        sample["licenses"].append(sample["licenses"][1])
+    elif change == "version":
+        sample["version"] = "2.0"
+    elif change == "declaration":
+        sample["licenses"][0]["license"]["name"] = "MIT with extra restrictions"
+    elif change == "encoding":
+        sample["licenses"][1]["license"]["text"]["encoding"] = "unknown"
+    verdict, declarations = policy.component_verdict(sample)
+    assert verdict == ("allowed" if change == "none" else "unknown")
+    if change == "none":
+        assert declarations[0]["declared"] == declared
+        assert declarations[0]["review"]["files_sha256"] == files
+
+
+def test_collector_includes_unrecorded_license_files(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    collector = load("collect_license_files")
+    relative = Path("example.dist-info/licenses/nested/notice.txt")
+    notice = tmp_path / relative
+    notice.parent.mkdir(parents=True)
+    notice.write_bytes(b"fixture notice")
+    (notice.parent / "unrecorded.txt").write_bytes(b"extra notice")
+    monkeypatch.setattr(
+        collector.importlib.metadata,
+        "distribution",
+        lambda _: SimpleNamespace(
+            files=[relative],
+            version="1.0",
+            locate_file=lambda p: tmp_path / p,
+        ),
+    )
+    result = collector.collect()
+    assert {row["license"]["name"] for row in result["licenses"]} == {
+        "declared license file: nested/notice.txt",
+        "declared license file: nested/unrecorded.txt",
+    }

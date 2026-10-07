@@ -72,13 +72,6 @@ uv run --no-sync python .github/scripts/build_sbom.py
 uv run --no-sync python .github/scripts/check_licenses.py sbom/*.cdx.json --report sbom/license-report.json
 ```
 
-PowerShell does not expand the SBOM wildcard for Python; use this final command
-after the same sync and generation steps:
-
-```powershell
-uv run --no-sync python .github/scripts/check_licenses.py (Get-ChildItem sbom/*.cdx.json).FullName --report sbom/license-report.json
-```
-
 Generated files and environments under `sbom/` are ignored by Git. Keep reports
 as evidence; commit manifests, locks and reviewed policy inputs instead.
 

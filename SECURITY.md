@@ -25,3 +25,22 @@ report that something escapes `docker.py` is.
 
 `.env` is untracked; `.env.sample` is tracked and must hold empty keys only.
 CI enforces both, and scans the full history with gitleaks on every PR.
+
+## Dependencies and SBOM evidence
+
+The Security workflow runs on pull requests, pushes to `main`, Mondays at 03:00 UTC,
+and manual dispatch. `pip-audit` checks the project's locked runtime dependency set
+against known vulnerabilities, applying the documented exceptions in
+`.github/pip-audit-ignore.txt`. It does not audit each independent MCP script environment.
+
+The separate `licenses` job inventories the runtime, development environment and
+packaged stdio MCP script environments as CycloneDX SBOMs, then checks their license
+declarations against repository policy. Its artifact preserves SBOMs, license
+results and generation evidence for 90 days, including available reports on failure.
+See [the SBOM guide](docs/sbom.md) for download instructions and failure handling.
+
+License policy acceptance and a vulnerability scan cover different questions. Neither
+verifies sandbox isolation, dataset/API rights, general Docker/OS packages or all code
+inside bundled binaries. The PDF MCP's reviewed pypdfium2 wheel notices are collected
+and checked explicitly; [its review](docs/pypdfium2-license-review.md) records the
+distribution obligations that remain when shipping that environment.

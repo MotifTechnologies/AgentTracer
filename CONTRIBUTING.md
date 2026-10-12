@@ -94,6 +94,24 @@ there — hoisting it to the top of the import block breaks the shim silently.
 carries `# nosec B602`. Real isolation is `environments/docker.py`. See
 `SECURITY.md`.
 
+## Automatic merging
+
+Non-draft pull requests targeting `main` are enrolled in GitHub auto-merge when
+opened, reopened, marked ready, updated with commits, or edited. GitHub merges
+them with a merge commit only after all repository rules pass: one code-owner
+approval, all nine required checks, resolved review conversations, and an
+up-to-date branch without merge conflicts. Authors cannot approve their own PRs.
+
+An approval alone is not enough when a branch is behind `main`: update it and
+wait for CI again. Changes that invalidate an approval need another review.
+Keep unfinished work as a draft. Auto-merge does not update branches, resolve
+conflicts, submit approvals, or bypass repository rules. Disabling auto-merge
+manually lasts until the next qualifying event above; use a draft to pause it.
+
+The repository's **Allow auto-merge** setting must stay enabled. The
+`auto-merge.yml` workflow uses the built-in GitHub token and only calls GitHub
+APIs; it never checks out or runs pull-request code.
+
 ## Commits and history
 
 Write commit subjects in the imperative, and say why in the body. Formatting-only

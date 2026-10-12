@@ -1,0 +1,42 @@
+name: Auto-merge
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, ready_for_review, synchronize, edited]
+
+permissions: {}
+
+concurrency:
+  group: auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  enable:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # This privileged workflow only calls GitHub APIs. Never check out or
+      # execute PR code here, including code from forks or Dependabot branches.
+      - name: Enable auto-merge after all repository requirements pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr=$(gh pr view "$PR_NUMBER" --repo "$GH_REPO" \
+            --json state,isDraft,baseRefName,headRefOid,autoMergeRequest)
+          if ! jq -e '.state == "OPEN" and .isDraft == false and
+            .baseRefName == "main" and .autoMergeRequest == null' \
+            <<< "$pr" > /dev/null; then
+            exit 0
+          fi
+          head=$(jq -r '.headRefOid' <<< "$pr")
+          gh pr merge "$PR_NUMBER" --repo "$GH_REPO" \
+            --auto --merge --match-head-commit "$head"

@@ -129,8 +129,10 @@ The repository's **Allow auto-merge** setting must stay enabled. The
 `auto-merge.yml` workflow uses the built-in GitHub token and only calls GitHub
 APIs; it never checks out or runs pull-request code.
 
-An administrator must activate **Require merge queue** only after all three
-required-check workflows support `merge_group` on `main`. Use merge commits,
+An administrator must activate the prepared
+[main merge queue ruleset](https://github.com/MotifTechnologies/motif-agent-tracer-v2/rules/24909551)
+only after all three required-check workflows support `merge_group` on `main`.
+Keep the existing `main` ruleset active. Use merge commits,
 require every queue entry to pass its checks, build and merge one PR at a time,
 and allow 30 minutes for checks. Keep the existing code-owner, review-resolution,
 required-check, and no-bypass rules. GitHub's

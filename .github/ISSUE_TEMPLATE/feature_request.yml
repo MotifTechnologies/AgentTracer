@@ -1,0 +1,42 @@
+name: Feature request
+description: Propose an improvement to agent-tracer.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues before proposing a feature.
+        Explain the use case and avoid including private datasets or credentials.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to accomplish, and what is missing today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the desired behavior and how a user would use it.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe existing workarounds or other approaches.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Include examples, affected components, or compatibility considerations.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues for duplicates.
+          required: true
+        - label: I agree to follow this project's [Code of Conduct](https://github.com/MotifTechnologies/motif-agent-tracer-v2/blob/main/CODE_OF_CONDUCT.md).
+          required: true

@@ -30,6 +30,8 @@ def plain_answer(record):
     call = calls[0]
     args = call["function"]["arguments"]
     args = json.loads(args) if isinstance(args, str) else args
+    if not isinstance(args, dict):
+        raise ValueError("submit arguments must be an object")
     if not isinstance(args.get("answer"), str) or not args["answer"]:
         raise ValueError("submit.answer must be a nonempty string")
     trailing = messages[index + 1 :]
@@ -50,7 +52,13 @@ def plain_answer(record):
     result["tools"] = [t for t in result["tools"] if t["function"]["name"] != "submit"]
     result["conversations"] = [
         *messages[:index],
-        {"role": "assistant", "content": args["answer"]},
+        {
+            "role": "assistant",
+            "content": args["answer"],
+            "tool_calls": None,
+            "thinking": None,
+            "tool_call_id": None,
+        },
     ]
     for message in result["conversations"]:
         if message["role"] == "system":

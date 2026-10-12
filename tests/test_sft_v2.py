@@ -65,7 +65,13 @@ def test_preserves_source_history_and_exact_answer():
     result = builder["plain_answer"](original)
     assert original == snapshot
     assert result["conversations"][2:4] == original["conversations"][2:4]
-    assert result["conversations"][-1] == {"role": "assistant", "content": "42\n"}
+    assert result["conversations"][-1] == {
+        "role": "assistant",
+        "content": "42\n",
+        "tool_calls": None,
+        "thinking": None,
+        "tool_call_id": None,
+    }
     assert result["tools"] == original["tools"][:1]
     assert result["conversations"][1]["content"].startswith("Return only")
     assert result["conversations"][1]["content"].endswith(
@@ -114,3 +120,19 @@ def test_build_reproducible_and_does_not_overwrite(tmp_path):
         assert (a / name).read_bytes() == (b / name).read_bytes()
     with pytest.raises(ValueError, match="already exists"):
         builder["build"](source, a)
+
+
+@pytest.mark.parametrize("arguments", ["null", "[]", "42", '"answer"', None, []])
+def test_invalid_submit_arguments_report_source_row_before_writing(tmp_path, arguments):
+    invalid = record()
+    invalid["conversations"][-2]["tool_calls"][0]["function"]["arguments"] = arguments
+    source = tmp_path / "input.jsonl"
+    source.write_text(json.dumps(record()) + "\n" + json.dumps(invalid) + "\n")
+    output = tmp_path / "output"
+
+    with pytest.raises(
+        ValueError, match="Source row 1: submit arguments must be an object"
+    ):
+        builder["build"](source, output)
+
+    assert not output.exists()

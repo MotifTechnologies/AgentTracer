@@ -6,10 +6,17 @@
 
 <!-- The problem. Link the issue if there is one. -->
 
+## Validation
+
+<!-- List the checks you ran and their results. Explain skipped or inapplicable
+checks, including for documentation-only changes. Add reproduction steps or
+screenshots when they help a reviewer verify the change. -->
+
 ## Checklist
 
-- [ ] `uv run pytest` passes locally
-- [ ] `uv run ruff check src tests` and `uv run ruff format --check src tests` are clean
+- [ ] I have read CONTRIBUTING.md and agree to follow CODE_OF_CONDUCT.md
+- [ ] Tests and documentation cover behavior changes, where applicable
+- [ ] Applicable checks in CONTRIBUTING.md pass; results and skipped checks are documented above
 - [ ] No `confidential/`, `DATA_BUILDER/`, real `.env`, or generated artefact is in the diff
 - [ ] New dependencies are compatible with Apache-2.0 (CI checks; see CONTRIBUTING.md)
 - [ ] `uv.lock` is committed alongside any `pyproject.toml` change

@@ -17,7 +17,8 @@ run one for real.
 
 ## Run the gates before you push
 
-Everything CI blocks on, you can run locally in about half a minute:
+Run the code and security checks locally before pushing. SBOM generation installs
+separate environments and may take longer on a cold cache. The commands below use Bash.
 
 ```bash
 uv run ruff check src tests          # lint
@@ -54,8 +55,8 @@ lint findings.
 
 `pip-audit` runs against `uv.lock`, not against whatever happens to be
 installed. Vulnerabilities we cannot fix are listed with a reason in
-`.github/pip-audit-ignore.txt` — today that is 18 pillow advisories held
-back by `moviepy 2.2.1`, which pins `pillow<12.0`. Add to that file only
+`.github/pip-audit-ignore.txt`; consult that file and the current audit report
+for the affected versions and advisories. Add to that file only
 when upstream leaves no fix, and delete entries as soon as one lands.
 
 `typecheck` runs mypy over `src/` and blocks like the rest. It is clean; keep
@@ -85,6 +86,15 @@ licence stops the build until it is reviewed. The SPDX parser preserves
 parentheses and `AND`/`OR`/`WITH`, and matches exact identifiers. The gate
 enforces the repository's dependency policy, not a legal compatibility opinion.
 See [the SBOM workflow](docs/sbom.md) for scope, artifacts and limitations.
+
+For packaged MCP servers, inline PEP 723 dependencies have independent
+`server.py.lock` files. Regenerate and commit the affected script lock after a
+dependency edit; updating only the root `uv.lock` does not update these environments.
+The [MCP development guide](src/agent_tracer/mcp_servers/README.md#의존성-고정과-sbom) describes
+the server layout; [SBOM maintenance](docs/sbom.md#changing-dependencies-and-review-evidence)
+lists the commands and review procedure. An unrecognised license is resolved by
+reviewing its actual evidence, not by adding a blanket ignore. The reviewed
+[pypdfium2 wheel](docs/pypdfium2-license-review.md) is a version/file-hash-scoped case.
 
 **`src/agent_tracer/mcp/provider.py`.** The `stirrup.tools.mcp` import sits
 below `_mcp2_compat.apply()` and carries `# noqa: E402, I001`. It must stay

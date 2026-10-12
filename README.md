@@ -115,3 +115,8 @@ Apache License 2.0 — see `LICENSE`.
 `src/agent_tracer/models/client.py` adapts code from
 [Stirrup](https://github.com/ArtificialAnalysis/Stirrup) and remains under the
 MIT License; `NOTICE` carries that attribution.
+
+### Plain-answer SFT augmentation
+
+To mix original `submit` endings with ordinary assistant answers without model
+calls, see [the offline SFT v2 builder](docs/sft-v2.md).

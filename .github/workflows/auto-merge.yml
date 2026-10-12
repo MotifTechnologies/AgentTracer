@@ -22,7 +22,7 @@ jobs:
     steps:
       # This privileged workflow only calls GitHub APIs. Never check out or
       # execute PR code here, including code from forks or Dependabot branches.
-      - name: Enable auto-merge after all repository requirements pass
+      - name: Enable auto-merge or queue entry after required reviews and checks
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -38,5 +38,7 @@ jobs:
             exit 0
           fi
           head=$(jq -r '.headRefOid' <<< "$pr")
+          # gh honors a required merge queue automatically. --merge provides
+          # the fallback method before the queue rule is activated.
           gh pr merge "$PR_NUMBER" --repo "$GH_REPO" \
             --auto --merge --match-head-commit "$head"

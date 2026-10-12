@@ -1,6 +1,7 @@
 """Offline SFT termination augmentation preserves answers and tool history."""
 
 import copy
+import io
 import json
 import runpy
 from pathlib import Path
@@ -136,3 +137,60 @@ def test_invalid_submit_arguments_report_source_row_before_writing(tmp_path, arg
         builder["build"](source, output)
 
     assert not output.exists()
+
+
+@pytest.mark.parametrize("line_ending", ["\n", "\r\n"])
+def test_jsonl_preserves_unicode_separators_inside_strings(tmp_path, line_ending):
+    value = record()
+    answer = "first\u2028second\u2029third"
+    value["conversations"][-2]["tool_calls"][0]["function"]["arguments"] = json.dumps(
+        {"answer": answer}, ensure_ascii=False
+    )
+    source = tmp_path / "input.jsonl"
+    row = json.dumps(value, ensure_ascii=False)
+    source.write_bytes((line_ending + row + line_ending + row).encode("utf-8"))
+    output = tmp_path / "output"
+
+    manifest = builder["build"](source, output)
+
+    assert manifest["source_trajectories"] == 2
+    assert manifest["trajectories"] == 4
+    with (output / "sft_all.v2.jsonl").open(encoding="utf-8") as stream:
+        records = [json.loads(line) for line in stream]
+    assert records.count(value) == 2
+    assert sum(r["conversations"][-1].get("content") == answer for r in records) == 2
+    with (output / "sft_all.v2.turnsplit.jsonl").open(encoding="utf-8") as stream:
+        samples = [json.loads(line) for line in stream]
+    assert len(samples) == manifest["turnsplit_samples"]
+    assert sum(s["messages"][-1]["content"] == answer for s in samples) == 2
+
+
+def test_build_uses_utf8_with_a_cp949_default(tmp_path, monkeypatch):
+    value = record()
+    answer = "한글 답변 😀"
+    value["conversations"][-2]["tool_calls"][0]["function"]["arguments"] = json.dumps(
+        {"answer": answer}, ensure_ascii=False
+    )
+    source = tmp_path / "input.jsonl"
+    source.write_bytes((json.dumps(value, ensure_ascii=False) + "\n").encode("utf-8"))
+    output = tmp_path / "output"
+    real_open = io.open
+
+    def cp949_open(file, mode="r", buffering=-1, encoding=None, *args, **kwargs):
+        if "b" not in mode and encoding in (None, "locale"):
+            encoding = "cp949"
+        return real_open(file, mode, buffering, encoding, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(io, "open", cp949_open)
+        manifest = builder["build"](source, output)
+
+    for name in manifest["files"]:
+        with (output / name).open(encoding="utf-8") as stream:
+            rows = [json.loads(line) for line in stream]
+        assert rows
+        if name != "provenance.jsonl":
+            assert answer.encode("utf-8") in (output / name).read_bytes()
+    assert (
+        json.loads((output / "manifest.json").read_text(encoding="utf-8")) == manifest
+    )

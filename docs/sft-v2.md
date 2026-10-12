@@ -14,6 +14,9 @@ mismatched tool IDs, empty answers, or unrecognized system instructions fail
 before output is written. It expects the agent-tracer finish instructions; review
 custom prompts before using this transformation.
 
+Input and output files use UTF-8. JSONL records are read by physical file lines,
+preserving Unicode line and paragraph separators inside JSON strings.
+
 The conversion removes the `submit` schema and its final tool response, and replaces
 the final assistant turn with the exact `submit.answer` string. That final message
 has neither tool calls nor reasoning. Earlier assistant/tool messages and other tool

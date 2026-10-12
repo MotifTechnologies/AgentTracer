@@ -122,9 +122,8 @@ def build(source, output, seed=42):
     if output.exists():
         raise ValueError("Output directory already exists; choose a new directory")
     source_hash = sha256(source)
-    records = [
-        json.loads(line) for line in source.read_text().splitlines() if line.strip()
-    ]
+    with source.open(encoding="utf-8") as stream:
+        records = [json.loads(line) for line in stream if line.strip()]
     if not records:
         raise ValueError("Input dataset is empty")
     entries = []
@@ -140,9 +139,9 @@ def build(source, output, seed=42):
     output.mkdir(parents=True)
     count = 0
     with (
-        (output / "sft_all.v2.jsonl").open("w") as raw,
-        (output / "sft_all.v2.turnsplit.jsonl").open("w") as split,
-        (output / "provenance.jsonl").open("w") as provenance,
+        (output / "sft_all.v2.jsonl").open("w", encoding="utf-8") as raw,
+        (output / "sft_all.v2.turnsplit.jsonl").open("w", encoding="utf-8") as split,
+        (output / "provenance.jsonl").open("w", encoding="utf-8") as provenance,
     ):
         for row, (source_row, mode, record) in enumerate(entries):
             raw.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -177,7 +176,9 @@ def build(source, output, seed=42):
             for p in sorted(output.iterdir())
         },
     }
-    (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    (output / "manifest.json").write_text(
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+    )
     return manifest
 
 

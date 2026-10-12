@@ -104,6 +104,12 @@ reporting instructions in the [security policy](SECURITY.md).
 
 ## License
 
+The Security workflow generates a [CycloneDX SBOM and license policy report](docs/sbom.md)
+for the Python runtime, development dependencies and packaged stdio MCP servers.
+The guide explains how to download the reports, reproduce the checks and maintain
+dependency locks. License policy acceptance still requires preserving the notices
+that apply when distributing dependencies.
+
 Apache License 2.0 — see `LICENSE`.
 
 `src/agent_tracer/models/client.py` adapts code from

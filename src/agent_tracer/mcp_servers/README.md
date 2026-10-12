@@ -20,7 +20,8 @@ src/agent_tracer/mcp_servers/
 ├── mcp.schema.json    # 매니페스트 JSON Schema
 ├── echo/              # 예제 서버 (계약 레퍼런스)
 │   ├── mcp.json
-│   └── server.py
+│   ├── server.py
+│   └── server.py.lock # PEP 723 의존성의 고정 버전
 ├── calculator/        # 정확 연산
 ├── time/              # 현재 시각 · 타임존 변환
 ├── filesystem/        # 파일 읽기·쓰기·편집·검색      [샌드박스]
@@ -30,7 +31,7 @@ src/agent_tracer/mcp_servers/
 ├── xlsx/              # 워크북 읽기·셀 편집           [샌드박스]
 └── context7/          # 라이브러리 문서 조회          [외부 HTTP]
 
-각 폴더는 mcp.json · server.py 로 동일하다.
+stdio 서버 폴더는 mcp.json · server.py · server.py.lock 로 동일하다.
 단 `[외부 HTTP]`는 server.py가 없다 — 우리가 띄우는 게 아니다.
 ```
 
@@ -113,6 +114,20 @@ mcp:
 ```
 
 등록 결과(서버·툴 목록, 버전)는 궤적 metadata에 기록된다.
+
+## 의존성 고정과 SBOM
+
+각 stdio 서버의 PEP 723 inline dependencies는 인접한 `server.py.lock`으로 고정한다. 서버를 추가하거나 의존성을 변경한 뒤에는 저장소 루트에서 해당 lock을 생성·갱신하고 함께 커밋한다.
+
+```bash
+uv lock --script src/agent_tracer/mcp_servers/pdf/server.py
+```
+
+특정 패키지의 수정 버전으로 갱신하려면 `--upgrade-package <package>`를 추가한다. 루트 `uv.lock`을 갱신해도 이 독립 환경의 lock은 바뀌지 않는다.
+
+Security CI의 `licenses` job은 각 내장 stdio 서버의 lock을 사용해 별도 CycloneDX SBOM을 만든다. 현재 지원하는 기동 형식은 `uv run --quiet server.py`이며, lock 누락이나 지원하지 않는 기동 형식은 검사 실패다. 새로운 기동 형식은 SBOM 생성기에도 명시적으로 지원을 추가해야 한다. 검사 중 서버·에이전트·Docker를 실행하지 않는다.
+
+외부 HTTP 서버는 `index.json`에 검사 제외 사유를 기록한다. 사용자 설정의 별도 `mcp.discovery_dir`도 이 저장소의 내장 서버 CI 검사 범위에는 포함되지 않는다. 결과 다운로드·라이선스 검토·배포 고지 절차는 [SBOM 운영 문서](../../../docs/sbom.md)를 따른다.
 
 ## 샌드박스를 다루는 서버
 

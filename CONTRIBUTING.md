@@ -7,7 +7,7 @@ Thanks for taking the time. This is an Apache-2.0 project built on
 
 ```bash
 uv sync              # runtime + dev tools, resolved from uv.lock
-uv run pytest -q     # 206 tests, ~4 seconds, no Docker needed
+uv run pytest -q     # no Docker needed
 uv run pre-commit install   # optional; runs the fast checks before each commit
 ```
 
@@ -30,7 +30,9 @@ uv export --no-emit-project --format requirements-txt --no-dev -o requirements-a
 grep -oE '^(PYSEC|GHSA|CVE)-[A-Za-z0-9.-]+' .github/pip-audit-ignore.txt \
   | sed 's/^/--ignore-vuln=/' \
   | xargs uv run pip-audit --strict -r requirements-audit.txt
-uv run python .github/scripts/check_licenses.py
+uv sync --locked --dev --group compliance
+uv run --no-sync python .github/scripts/build_sbom.py
+uv run --no-sync python .github/scripts/check_licenses.py sbom/*.cdx.json --report sbom/license-report.json
 ```
 
 `uv run ruff format src tests` fixes formatting; `ruff check --fix` fixes most
@@ -45,7 +47,7 @@ lint findings.
 | `lock` | A `pyproject.toml` change whose `uv.lock` was never regenerated — that is how an unresolved, unaudited dependency reaches `main` |
 | `bandit` | New HIGH/MEDIUM security findings in `src/` |
 | `pip-audit` | A dependency with a known CVE |
-| `licenses` | A dependency whose licence is incompatible with Apache-2.0 |
+| `licenses` | A Python dependency with a missing, unidentified or policy-disallowed license declaration; missing MCP script locks |
 | `secrets` | A credential anywhere in the history, not just the tip |
 | `guard` | Confidential paths, real `.env` files, oversized files |
 | `typecheck` | A new mypy error in `src/` |
@@ -79,8 +81,10 @@ Stirrup derivative. Changes there need an explicit review, and CI flags them.
 Strong copyleft (GPL, AGPL, SSPL) is blocked. An SPDX `OR` expression passes
 when any option is acceptable — `tld` ships
 `MPL-1.1 OR GPL-2.0-only OR LGPL-2.1-or-later` and is fine. An unrecognised
-licence stops the build until a human classifies it in
-`.github/scripts/check_licenses.py`.
+licence stops the build until it is reviewed. The SPDX parser preserves
+parentheses and `AND`/`OR`/`WITH`, and matches exact identifiers. The gate
+enforces the repository's dependency policy, not a legal compatibility opinion.
+See [the SBOM workflow](docs/sbom.md) for scope, artifacts and limitations.
 
 **`src/agent_tracer/mcp/provider.py`.** The `stirrup.tools.mcp` import sits
 below `_mcp2_compat.apply()` and carries `# noqa: E402, I001`. It must stay

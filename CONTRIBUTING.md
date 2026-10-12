@@ -139,6 +139,41 @@ there — hoisting it to the top of the import block breaks the shim silently.
 carries `# nosec B602`. Real isolation is `environments/docker.py`. See
 `SECURITY.md`.
 
+## Automatic merging and merge queue
+
+Non-draft pull requests targeting `main` are enrolled in GitHub auto-merge when
+opened, reopened, marked ready, updated with commits, or edited. Once the merge
+queue rule is active, eligible PRs enter the queue after one code-owner approval,
+all nine required checks, and resolved review conversations. Authors cannot
+approve their own PRs.
+
+The queue tests a temporary commit containing the PR, current `main`, and any
+earlier queued changes. All nine checks run again on `merge_group` events; the
+contribution guard compares the entire group against its base SHA. GitHub merges
+passing entries with a merge commit. This removes the need to repeatedly click
+**Update branch** solely because another PR merged. Conflicts and failed checks
+remove an entry from the queue for correction; review-invalidating changes still
+need another approval. Until the queue rule is activated, the existing strict
+up-to-date requirement still applies.
+
+Keep unfinished work as a draft. Automation does not resolve conflicts, submit
+approvals, or bypass repository rules. Disabling auto-merge manually lasts until
+the next qualifying event above; use a draft to pause enrollment.
+
+The repository's **Allow auto-merge** setting must stay enabled. The
+`auto-merge.yml` workflow uses the built-in GitHub token and only calls GitHub
+APIs; it never checks out or runs pull-request code.
+
+An administrator must activate the prepared
+[main merge queue ruleset](https://github.com/MotifTechnologies/motif-agent-tracer-v2/rules/24909551)
+only after all three required-check workflows support `merge_group` on `main`.
+Keep the existing `main` ruleset active. Use merge commits,
+require every queue entry to pass its checks, build and merge one PR at a time,
+and allow 30 minutes for checks. Keep the existing code-owner, review-resolution,
+required-check, and no-bypass rules. GitHub's
+[merge queue guide](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue)
+describes the temporary branches and queue operation.
+
 ## Commits and history
 
 Write commit subjects in the imperative, and say why in the body. Formatting-only

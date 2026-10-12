@@ -2,6 +2,9 @@ name: Contribution guard
 
 on:
   pull_request:
+  merge_group:
+    types: [checks_requested]
+    branches: [main]
 
 permissions:
   contents: read
@@ -15,11 +18,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Files this PR touches
+      - name: Files this PR or merge group touches
         id: diff
+        env:
+          BASE_SHA: ${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
+          : "${BASE_SHA:?Missing comparison base}"
+          : "${HEAD_SHA:?Missing comparison head}"
           git diff --name-only --diff-filter=d \
-            "${{ github.event.pull_request.base.sha }}...${{ github.sha }}" > changed.txt
+            "$BASE_SHA...$HEAD_SHA" > changed.txt
           echo "--- changed ---"; cat changed.txt
 
       # .gitignore is advice; `git add -f` walks straight past it. These paths

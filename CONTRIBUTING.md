@@ -8,7 +8,7 @@ All participants are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md
 ## Reporting bugs and proposing changes
 
 Search existing issues and pull requests before opening a new one. Use the
-[issue templates](https://github.com/MotifTechnologies/motif-agent-tracer-v2/issues/new/choose)
+[issue templates](https://github.com/MotifTechnologies/AgentTracer/issues/new/choose)
 for bug reports and feature requests. For a bug, include a minimal
 reproduction, expected and actual behavior, and your environment. For a
 feature, describe the problem, proposed behavior, and alternatives.
@@ -165,7 +165,7 @@ The repository's **Allow auto-merge** setting must stay enabled. The
 APIs; it never checks out or runs pull-request code.
 
 An administrator must activate the prepared
-[main merge queue ruleset](https://github.com/MotifTechnologies/motif-agent-tracer-v2/rules/24909551)
+[main merge queue ruleset](https://github.com/MotifTechnologies/AgentTracer/rules/24909551)
 only after all three required-check workflows support `merge_group` on `main`.
 Keep the existing `main` ruleset active. Use merge commits,
 require every queue entry to pass its checks, build and merge one PR at a time,

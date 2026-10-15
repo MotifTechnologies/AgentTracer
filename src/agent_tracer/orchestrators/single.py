@@ -148,6 +148,7 @@ class SingleAgentOrchestrator:
             base_url=m.base_url,
             api_key=m.resolved_api_key(),
             reasoning_effort=m.reasoning_effort,
+            send_max_tokens=m.send_max_tokens,
             timeout=m.timeout,
             max_retries=m.max_retries,
             kwargs=m.extra_kwargs or None,

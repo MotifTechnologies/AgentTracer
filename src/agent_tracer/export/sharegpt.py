@@ -147,6 +147,15 @@ def trajectory_to_record(
             ),
             "evaluation": result.get("evaluation"),
             "exit_status": result.get("exit_status"),
+            **(
+                {
+                    "fixture_provenance": metadata["fixture_provenance"],
+                    "fixture_sha256": metadata.get("fixture_sha256"),
+                    "protocol": metadata.get("protocol"),
+                }
+                if "fixture_provenance" in metadata
+                else {}
+            ),
         },
         "category": category,
         "conversations": _conversations(traj),

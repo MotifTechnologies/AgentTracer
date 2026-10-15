@@ -20,9 +20,11 @@ source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "datasets" },
+    { name = "jsonschema" },
     { name = "mcp" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
+    { name = "referencing" },
     { name = "stirrup", extra = ["docker", "mcp"] },
 ]
 
@@ -45,9 +47,11 @@ dev = [
 requires-dist = [
     { name = "click", specifier = ">=8.5.0" },
     { name = "datasets", specifier = ">=5.0.1" },
+    { name = "jsonschema", specifier = ">=4.26.0,<5" },
     { name = "mcp", specifier = ">=2.3.0,<3" },
     { name = "python-dotenv", specifier = ">=1.2.4" },
     { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "referencing", specifier = ">=0.37.0,<1" },
     { name = "stirrup", extras = ["docker", "mcp"], specifier = "==0.2.0" },
 ]
 
@@ -880,8 +884,8 @@ name = "httpcore2"
 version = "2.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "h11" },
-    { name = "truststore" },
+    { name = "h11", marker = "sys_platform != 'emscripten'" },
+    { name = "truststore", marker = "sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/15/8c/e925b1c92018abb3a1863ce1549d76d2381e334d21d65d4ac8f65dabd78a/httpcore2-2.13.0.tar.gz", hash = "sha256:2adc8be4fb285fbcd6d894298db3b52c177e74b6674eda3a76bd36be3292a3db", size = 67740, upload-time = "2026-09-14T14:18:04.717Z" }
 wheels = [
@@ -2808,8 +2812,8 @@ name = "uvicorn"
 version = "0.52.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click" },
-    { name = "h11" },
+    { name = "click", marker = "sys_platform != 'emscripten'" },
+    { name = "h11", marker = "sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/03/18/ccce41535dee1be77735592bd19965f3972c82e07ee703d324709496b716/uvicorn-0.52.1.tar.gz", hash = "sha256:112ec661814189acbccd3f7b86460147cc065fc92c0821afa78918780e4354dd", size = 100571, upload-time = "2026-08-01T18:19:30.732Z" }
 wheels = [

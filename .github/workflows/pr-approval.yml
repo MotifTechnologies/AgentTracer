@@ -1,0 +1,18 @@
+name: PR approval
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions: {}
+
+jobs:
+  signal:
+    if: github.event.review.state == 'approved' && github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      # The privileged reconciliation runs via workflow_run from main. This
+      # review workflow has no write token and neither checks out nor runs PR code.
+      - name: Notify auto-merge reconciliation
+        run: echo 'Approval received; auto-merge will recheck live repository rules.'

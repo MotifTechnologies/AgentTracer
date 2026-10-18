@@ -12,7 +12,7 @@ classifiers = [
 ]
 dependencies = [
     "click>=8.5.0",
-    "datasets>=5.0.1",
+    "datasets>=5.1.0",
     "python-dotenv>=1.2.4",
     "mcp>=2.3.0,<3",
     "pyyaml>=6.0.3",

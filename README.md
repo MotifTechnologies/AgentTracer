@@ -1,4 +1,4 @@
-# agent-tracer
+# AgentTracer
 
 Run agentic tasks against any OpenAI-compatible LLM endpoint (vLLM first) and
 record structured trajectories, exportable as SFT/RL training datasets.
@@ -98,7 +98,7 @@ See the [contributing guide](CONTRIBUTING.md) for setup, issue reporting, the
 pull request workflow, and required checks. All participants are expected to
 follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
-Use the [issue templates](https://github.com/MotifTechnologies/motif-agent-tracer-v2/issues/new/choose)
+Use the [issue templates](https://github.com/MotifTechnologies/AgentTracer/issues/new/choose)
 to report a bug or request a feature. For vulnerabilities, follow the private
 reporting instructions in the [security policy](SECURITY.md).
 

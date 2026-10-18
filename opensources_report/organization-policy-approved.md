@@ -1,0 +1,43 @@
+# 조직 오픈소스 정책 승인본 — 본 저장소 적용분
+
+문서 ID: OSS-POL-001 · 정리본 버전: 1.1 · 작성일: 2026-10-14 · 수정일: 2026-10-16
+
+상태: **기존 정책의 Git 승인 완료 / 본 통합 문서는 신규 작성**.
+
+이 문서는 `MotifTechnologies/motif-agent-tracer-v2`에서 승인·병합된 정책을
+모아 놓은 승인 근거 정리본이다. 승인 원본은 아래 PR의 리뷰·대상 커밋·병합 기록이다.
+
+## 승인 원본
+
+모든 시각은 UTC이다.
+
+| 정책 범위 | 승인 원본 | 승인자 | 승인 시각 | 병합 시각 | 승인 대상 커밋 |
+| --- | --- | --- | --- | --- | --- |
+| CI·라이선스 검사·취약점 예외·기여 통제·담당 리뷰어 | [PR #10](https://github.com/MotifTechnologies/motif-agent-tracer-v2/pull/10) | `gihuncho` | 2026-09-07 02:37:15 | 2026-09-09 03:06:48 | `529e36f1655aa922ad8625ef4a1f49bafe60aed8` |
+| SBOM 생성·라이선스 정책 검사·PDF wheel 검토 | [PR #24](https://github.com/MotifTechnologies/motif-agent-tracer-v2/pull/24) | `junhyeok-motech` | 2026-10-07 01:45:43 | 2026-10-07 01:46:16 | `d80e06599fbedef6cb5e9359d256a53c1c783307` |
+| SBOM 증빙 보관·해석·의존성 검토 유지 절차 | [PR #28](https://github.com/MotifTechnologies/motif-agent-tracer-v2/pull/28) | `junhyeok-motech` | 2026-10-12 05:15:24 | 2026-10-12 05:16:14 | `79598c560c255e9ba0e948451ce0b1e7ba32602f` |
+
+## 적용 정책
+
+1. **선정과 라이선스 확인**: 의존성의 버전·선언·배포 원문을 확인한다. 허용 목록과 정확한 SPDX 표현식 판정은 [검사 코드](../.github/scripts/check_licenses.py)를 기준으로 한다. 미확인 선언은 근거를 검토한 후 승인한다.
+2. **검토 근거 유지**: 개별 검토는 실제 버전·파일·해시에 연결한다. 원문이나 버전이 달라지면 재검토한다. [선정 제외 목록](oss-selection-exclusions.md)을 함께 확인한다.
+3. **의존성 재현과 식별**: 루트 의존성은 `uv.lock`, MCP 의존성은 인접 `server.py.lock`으로 고정한다. SBOM과 커밋·입력/출력 해시를 연결한다.
+4. **취약점 관리**: 루트 runtime 의존성을 `pip-audit`로 검사한다. 기존 수용 예외는 [예외 목록](../.github/pip-audit-ignore.txt)과 PR #10으로 승인·관리한다. 예외 변경·수정은 PR 및 재검사 실행으로 추적한다.
+5. **변경 승인과 역할**: [CODEOWNERS](../.github/CODEOWNERS)에 지정된 리뷰어와 PR 승인 기록으로 관리한다. 적용 중인 브랜치 규칙에 따라 승인·필수 검사·대화 해결 후 병합한다.
+6. **배포 고지**: [LICENSE](../LICENSE)와 [NOTICE](../NOTICE)를 유지한다. PDF 환경을 배포하는 경우 [wheel 검토 문서](../docs/pypdfium2-license-review.md)의 전체 고지 및 인정 문구 등 조건을 확인한다.
+7. **정기 검사**: PR, main push, 매주 월요일 03:00 UTC 및 수동 실행으로 Security 검사를 수행한다. [SECURITY.md](../SECURITY.md)와 [workflow](../.github/workflows/security.yml)가 운영 기준이다.
+8. **보관**: 정책·목록·승인·조치 기록은 Git/PR로 관리한다. SBOM 및 라이선스 결과 artifact는 90일 보관하며, 필요한 최종 증빙은 만료 전에 별도 보존한다. 상세 일자는 [목록](README.md#증빙-보관)을 따른다.
+
+## 승인·예외·조치 이력을 인정하는 기준
+
+대상 변경과 연결된 승인 PR이 있으면 해당 범위는 **승인 이력 관리 완료**로 본다.
+문서·목록·lock 변경은 Git diff, 승인 여부는 리뷰, 적용 여부는 병합 커밋,
+검증 결과는 해당 CI 실행을 기준으로 확인한다.
+
+신규 예외·정책·문서 변경은 해당 PR에 승인 이력을 남긴다.
+
+## 적용 범위와 변경
+
+이 정책은 본 저장소의 개발·배포 관리에 적용한다.
+Docker/OS 패키지, wheel 내부 바이너리, 외부 서비스, 데이터/API 권리는 대상별로 검토한다.
+적용 범위·운영 절차·[RACI](raci.md) 변경은 관련 PR에서 검토하고 승인 기록을 연결한다.

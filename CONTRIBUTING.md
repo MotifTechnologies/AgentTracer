@@ -132,7 +132,7 @@ reviewing its actual evidence, not by adding a blanket ignore. The reviewed
 [pypdfium2 wheel](docs/pypdfium2-license-review.md) is a version/file-hash-scoped case.
 
 **`src/agent_tracer/mcp/provider.py`.** The `stirrup.tools.mcp` import sits
-below `_mcp2_compat.apply()` and carries `# noqa: E402, I001`. It must stay
+below `_mcp2_compat.apply()` and carries `# noqa: E402`. It must stay
 there — hoisting it to the top of the import block breaks the shim silently.
 
 **`environments/local.py`** has no isolation, on purpose, and its `shell=True`

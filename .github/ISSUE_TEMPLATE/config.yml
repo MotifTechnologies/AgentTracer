@@ -1,11 +1,11 @@
 blank_issues_enabled: true
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/MotifTechnologies/motif-agent-tracer-v2/blob/main/SECURITY.md
+    url: https://github.com/MotifTechnologies/AgentTracer/blob/main/SECURITY.md
     about: Follow the security policy to report vulnerabilities privately.
   - name: Contribution guide
-    url: https://github.com/MotifTechnologies/motif-agent-tracer-v2/blob/main/CONTRIBUTING.md
+    url: https://github.com/MotifTechnologies/AgentTracer/blob/main/CONTRIBUTING.md
     about: Read the setup instructions, contribution workflow, and required checks.
   - name: Code of Conduct
-    url: https://github.com/MotifTechnologies/motif-agent-tracer-v2/blob/main/CODE_OF_CONDUCT.md
+    url: https://github.com/MotifTechnologies/AgentTracer/blob/main/CODE_OF_CONDUCT.md
     about: Read the community standards and how to report a conduct concern privately.

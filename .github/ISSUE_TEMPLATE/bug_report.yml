@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thank you for reporting a bug. Search existing issues first.
-        Report vulnerabilities privately using [SECURITY.md](https://github.com/MotifTechnologies/motif-agent-tracer-v2/blob/main/SECURITY.md).
+        Report vulnerabilities privately using [SECURITY.md](https://github.com/MotifTechnologies/AgentTracer/blob/main/SECURITY.md).
         Remove credentials, private data, and sensitive paths from all examples and logs.
   - type: textarea
     id: problem
@@ -70,5 +70,5 @@ body:
           required: true
         - label: I removed credentials and private data from this report.
           required: true
-        - label: I agree to follow this project's [Code of Conduct](https://github.com/MotifTechnologies/motif-agent-tracer-v2/blob/main/CODE_OF_CONDUCT.md).
+        - label: I agree to follow this project's [Code of Conduct](https://github.com/MotifTechnologies/AgentTracer/blob/main/CODE_OF_CONDUCT.md).
           required: true

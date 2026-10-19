@@ -294,6 +294,88 @@ def test_native_client_preserves_reasoning_and_omits_optional_budget(monkeypatch
     assert completion.assistant.blocks[0].content == "Thought"
 
 
+@pytest.mark.parametrize(
+    "reasoning_key", ["reasoning", "reasoning_content", "thinking", "custom_reasoning"]
+)
+def test_native_client_replays_configured_reasoning_on_next_tool_turn(
+    monkeypatch, reasoning_key
+):
+    from openai.types.chat import ChatCompletion
+
+    client = ReasoningKeyChatClient(
+        "m",
+        100,
+        context_window_tokens=1000,
+        base_url="http://unused",
+        api_key="not-a-real-key",
+        reasoning_key=reasoning_key,
+    )
+    details = [{"type": "reasoning.text", "text": "Thought", "signature": "opaque"}]
+    replies = [
+        {
+            "role": "assistant",
+            "content": None,
+            reasoning_key: "Thought",
+            "reasoning_details": details,
+            "tool_calls": [
+                {
+                    "id": "c1",
+                    "type": "function",
+                    "function": {"name": "lookup", "arguments": "{}"},
+                }
+            ],
+        },
+        {"role": "assistant", "content": "Done", reasoning_key: "Next thought"},
+    ]
+    captured = []
+
+    async def create(**kwargs):
+        captured.append(json.loads(json.dumps(kwargs)))
+        message = replies.pop(0)
+        return ChatCompletion.model_validate(
+            {
+                "id": "offline-response",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "m",
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "tool_calls"
+                        if message.get("tool_calls")
+                        else "stop",
+                        "message": message,
+                    }
+                ],
+            }
+        )
+
+    async def forbid_network(*args, **kwargs):
+        pytest.fail("Native history regression test must not make HTTP requests")
+
+    monkeypatch.setattr(client._client.chat.completions, "create", create)
+    monkeypatch.setattr("httpx.AsyncClient.send", forbid_network)
+
+    async def run():
+        try:
+            messages = [{"role": "user", "content": "Look it up."}]
+            first = await client.generate_native(messages, [])
+            messages.extend(
+                [first.history, {"role": "tool", "tool_call_id": "c1", "content": "5"}]
+            )
+            await client.generate_native(messages, [])
+            return first
+        finally:
+            await client.close()
+
+    first = asyncio.run(run())
+    replayed = captured[1]["messages"][1]
+    assert first.assistant.blocks[0].content == "Thought"
+    assert replayed[reasoning_key] == "Thought"
+    assert replayed["reasoning_details"] == details
+    assert replayed["tool_calls"][0]["id"] == "c1"
+
+
 def runner_config(tmp_path):
     from agent_tracer.config.schema import RetryConfig, RunnerConfig
 

@@ -4,16 +4,28 @@ on:
   pull_request_target:
     branches: [main]
     types: [opened, reopened, ready_for_review, synchronize, edited]
+  workflow_run:
+    workflows: [PR approval, CI, Security, Contribution guard]
+    types: [completed]
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
 
 permissions: {}
 
 concurrency:
-  group: auto-merge-${{ github.event.pull_request.number }}
+  group: auto-merge-main
   cancel-in-progress: false
 
 jobs:
   enable:
-    if: github.event.pull_request.draft == false
+    if: >-
+      (github.event_name == 'pull_request_target' && !github.event.pull_request.draft) ||
+      (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        (github.event.workflow_run.event == 'pull_request' ||
+          github.event.workflow_run.event == 'pull_request_review')) ||
+      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -27,18 +39,65 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_NAME: ${{ github.event_name }}
         shell: bash
         run: |
           set -euo pipefail
-          pr=$(gh pr view "$PR_NUMBER" --repo "$GH_REPO" \
-            --json state,isDraft,baseRefName,headRefOid,autoMergeRequest)
-          if ! jq -e '.state == "OPEN" and .isDraft == false and
-            .baseRefName == "main" and .autoMergeRequest == null' \
-            <<< "$pr" > /dev/null; then
-            exit 0
+          if [[ "$EVENT_NAME" == "pull_request_target" ]]; then
+            numbers="$PR_NUMBER"
+          else
+            # Reconcile opted-in PRs only; keep manually disabled auto-merge off.
+            numbers=$(gh pr list --repo "$GH_REPO" --base main --state open \
+              --limit 1000 --json number,isDraft,autoMergeRequest \
+              --jq '.[] | select(.isDraft == false and .autoMergeRequest != null) | .number')
           fi
-          head=$(jq -r '.headRefOid' <<< "$pr")
-          # gh honors a required merge queue automatically. --merge provides
-          # the fallback method before the queue rule is activated.
-          gh pr merge "$PR_NUMBER" --repo "$GH_REPO" \
-            --auto --merge --match-head-commit "$head"
+          owner=${GH_REPO%%/*}
+          repo=${GH_REPO#*/}
+          failed=0
+          for number in $numbers; do
+            # Read live state, not review payloads or artifacts from PR workflows.
+            pr=$(gh api graphql -f owner="$owner" -f repo="$repo" -F number="$number" \
+              -f query='query($owner:String!, $repo:String!, $number:Int!) {
+                repository(owner:$owner, name:$repo) { pullRequest(number:$number) {
+                  id state isDraft baseRefName headRefOid autoMergeRequest { enabledAt }
+                  reviewDecision mergeStateStatus isMergeQueueEnabled mergeQueueEntry { id }
+                } }
+              }' --jq '.data.repository.pullRequest')
+            if ! jq -e '.state == "OPEN" and .isDraft == false and
+              .baseRefName == "main" and .mergeQueueEntry == null' <<< "$pr" > /dev/null; then
+              continue
+            fi
+            head=$(jq -r '.headRefOid' <<< "$pr")
+            if jq -e '.autoMergeRequest == null' <<< "$pr" > /dev/null; then
+              if [[ "$EVENT_NAME" == "pull_request_target" ]]; then
+                gh pr merge "$number" --repo "$GH_REPO" \
+                  --auto --merge --match-head-commit "$head" || failed=1
+              fi
+              continue
+            fi
+            # Auto-merge can be enabled without a queue entry. Retry eligible
+            # entries after approval/checks and periodically if an event is missed.
+            # UNSTABLE may reflect only optional checks; check required ones below.
+            if ! jq -e '.isMergeQueueEnabled and .reviewDecision == "APPROVED" and
+              (.mergeStateStatus == "CLEAN" or .mergeStateStatus == "BEHIND" or
+                .mergeStateStatus == "UNSTABLE")' \
+              <<< "$pr" > /dev/null; then
+              continue
+            fi
+            if ! gh pr checks "$number" --repo "$GH_REPO" --required; then
+              continue
+            fi
+            id=$(jq -r '.id' <<< "$pr")
+            # Native enqueue enforces repository rules; the head guard rejects
+            # changes pushed since the approval/check state was read.
+            if ! gh api graphql -f id="$id" -f head="$head" \
+              -f query='mutation($id:ID!, $head:GitObjectID!) {
+                enqueuePullRequest(input:{pullRequestId:$id, expectedHeadOid:$head}) {
+                  mergeQueueEntry { id position state }
+                }
+              }'; then
+              echo "::error::Could not enqueue PR #$number; inspect its current rules and state."
+              failed=1
+            fi
+          done
+          exit "$failed"

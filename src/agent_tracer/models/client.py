@@ -160,13 +160,17 @@ class ReasoningKeyChatClient(ChatCompletionsClient):
         # Retain reasoning_details/signatures verbatim for subsequent requests.
         # Do not put headers, client configuration or resolved secrets here.
         history: dict[str, Any] = {"role": "assistant", "content": msg.content}
-        for field in (
+        history_fields: tuple[str, ...] = (
             "tool_calls",
             "reasoning",
             "reasoning_content",
             "reasoning_details",
-        ):
-            value = msg.model_dump(mode="json").get(field)
+        )
+        if self._reasoning_key != NO_REASONING:
+            history_fields += (self._reasoning_key,)
+        native_message = msg.model_dump(mode="json")
+        for field in history_fields:
+            value = native_message.get(field)
             if value is not None:
                 history[field] = value
         return NativeCompletion(assistant, history, response.model_dump(mode="json"))

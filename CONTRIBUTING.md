@@ -8,7 +8,7 @@ All participants are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md
 ## Reporting bugs and proposing changes
 
 Search existing issues and pull requests before opening a new one. Use the
-[issue templates](https://github.com/MotifTechnologies/motif-agent-tracer-v2/issues/new/choose)
+[issue templates](https://github.com/MotifTechnologies/AgentTracer/issues/new/choose)
 for bug reports and feature requests. For a bug, include a minimal
 reproduction, expected and actual behavior, and your environment. For a
 feature, describe the problem, proposed behavior, and alternatives.
@@ -132,7 +132,7 @@ reviewing its actual evidence, not by adding a blanket ignore. The reviewed
 [pypdfium2 wheel](docs/pypdfium2-license-review.md) is a version/file-hash-scoped case.
 
 **`src/agent_tracer/mcp/provider.py`.** The `stirrup.tools.mcp` import sits
-below `_mcp2_compat.apply()` and carries `# noqa: E402, I001`. It must stay
+below `_mcp2_compat.apply()` and carries `# noqa: E402`. It must stay
 there — hoisting it to the top of the import block breaks the shim silently.
 
 **`environments/local.py`** has no isolation, on purpose, and its `shell=True`
@@ -146,6 +146,13 @@ opened, reopened, marked ready, updated with commits, or edited. Once the merge
 queue rule is active, eligible PRs enter the queue after one code-owner approval,
 all nine required checks, and resolved review conversations. Authors cannot
 approve their own PRs.
+
+After an approval or a successful PR check workflow, automation rechecks open PRs
+with auto-merge enabled and queues eligible entries that have not entered the
+queue. A scheduled reconciliation runs every ten minutes as a fallback (GitHub
+may delay scheduled runs), and maintainers can run **Auto-merge** manually from
+Actions. Reconciliation preserves manually disabled auto-merge and skips drafts,
+unapproved PRs, pending or failed required checks, and entries already queued.
 
 The queue tests a temporary commit containing the PR, current `main`, and any
 earlier queued changes. All nine checks run again on `merge_group` events; the
@@ -163,9 +170,12 @@ the next qualifying event above; use a draft to pause enrollment.
 The repository's **Allow auto-merge** setting must stay enabled. The
 `auto-merge.yml` workflow uses the built-in GitHub token and only calls GitHub
 APIs; it never checks out or runs pull-request code.
+The **PR approval** workflow only signals a review with no token permissions.
+Privileged reconciliation runs from the default branch via `workflow_run`, reads
+live PR state, and uses GitHub's native queue API with an expected-head check.
 
 An administrator must activate the prepared
-[main merge queue ruleset](https://github.com/MotifTechnologies/motif-agent-tracer-v2/rules/24909551)
+[main merge queue ruleset](https://github.com/MotifTechnologies/AgentTracer/rules/24909551)
 only after all three required-check workflows support `merge_group` on `main`.
 Keep the existing `main` ruleset active. Use merge commits,
 require every queue entry to pass its checks, build and merge one PR at a time,

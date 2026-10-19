@@ -77,8 +77,10 @@ jobs:
             fi
             # Auto-merge can be enabled without a queue entry. Retry eligible
             # entries after approval/checks and periodically if an event is missed.
+            # UNSTABLE may reflect only optional checks; check required ones below.
             if ! jq -e '.isMergeQueueEnabled and .reviewDecision == "APPROVED" and
-              (.mergeStateStatus == "CLEAN" or .mergeStateStatus == "BEHIND")' \
+              (.mergeStateStatus == "CLEAN" or .mergeStateStatus == "BEHIND" or
+                .mergeStateStatus == "UNSTABLE")' \
               <<< "$pr" > /dev/null; then
               continue
             fi

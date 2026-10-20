@@ -406,6 +406,94 @@ def test_fixture_runner_uses_only_fixture_tools_and_manifest(tmp_path):
     assert runner.fixture_run_digest
 
 
+@pytest.mark.parametrize(
+    "artifact", ["results.jsonl", "requests/test1.s0.jsonl", "trajectories/test1.json"]
+)
+def test_unbound_existing_output_is_refused_without_writing_manifest(
+    tmp_path, artifact
+):
+    from agent_tracer.config.schema import ConfigError
+    from agent_tracer.run.runner import Runner
+
+    config = runner_config(tmp_path)
+    existing = config.output.path / artifact
+    existing.parent.mkdir(parents=True)
+    previous = json.dumps(
+        {"task_id": "test1", "sample_idx": 0, "exit_status": "completed"}
+    ).encode()
+    existing.write_bytes(previous)
+
+    with pytest.raises(ConfigError, match=r"without a fixture manifest.*new output"):
+        Runner(config)
+
+    assert existing.read_bytes() == previous
+    assert not (config.output.path / "fixture-run-manifest.json").exists()
+
+
+@pytest.mark.parametrize("separator", ["\u2028", "\u2029"])
+def test_fixture_jsonl_preserves_unicode_separators(tmp_path, separator):
+    data = fixture().model_dump(by_alias=True)
+    content = f"Set k1{separator}quantity to5."
+    data["user_turns"][0]["content"] = content
+    path = tmp_path / "fixture.jsonl"
+    path.write_text(json.dumps(data, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    tasks = BFCLFixtureDataset(path).load()
+
+    assert len(tasks) == 1
+    assert tasks[0].metadata["bfcl_fixture"]["user_turns"][0]["content"] == content
+
+
+@pytest.mark.parametrize("separator", ["\u2028", "\u2029"])
+def test_completed_unicode_journal_and_result_resume_without_calls(
+    tmp_path, monkeypatch, separator
+):
+    from agent_tracer.run.runner import Runner
+
+    config = runner_config(tmp_path)
+    original = Runner(config)
+    content = f"Quantity{separator}is5."
+    rows = [
+        {
+            "kind": kind,
+            "attempt": 1,
+            "step": 1,
+            "run_manifest_sha256": original.fixture_run_digest,
+            "content": content,
+        }
+        for kind in ("request", "response")
+    ]
+    journal = config.output.path / "requests" / "test1.s0.jsonl"
+    journal.parent.mkdir()
+    journal.write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    original.results_path.write_text(
+        json.dumps(
+            {
+                "task_id": "test1",
+                "sample_idx": 0,
+                "exit_status": "completed",
+                "submission": content,
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    saved = {p: p.read_bytes() for p in (journal, original.results_path)}
+
+    async def forbidden(*args, **kwargs):
+        pytest.fail("A completed sample must resume without model calls")
+
+    monkeypatch.setattr(BFCLFixtureOrchestrator, "run_task", forbidden)
+    resumed = Runner(config)
+    assert resumed._completed_samples() == {("test1", 0)}
+    assert asyncio.run(resumed.run()) == []
+    assert all(p.read_bytes() == before for p, before in saved.items())
+
+
 def test_unresolved_request_blocks_resume_before_api(tmp_path):
     from agent_tracer.config.schema import ConfigError
     from agent_tracer.run.runner import Runner

@@ -137,23 +137,33 @@ class Runner:
                     "fixture/config changed under an existing output; use a new output directory"
                 )
         else:
+            # A missing binding must not adopt another run's results or journals.
+            # The reservation is the only entry created by this collector itself.
+            if any(
+                entry.name != ".fixture-collector.lock"
+                for entry in config.output.path.iterdir()
+            ):
+                raise ConfigError(
+                    "existing output without a fixture manifest cannot be verified; use a new output directory"
+                )
             with path.open("x", encoding="utf-8") as out:
                 json.dump(manifest, out, indent=2)
         for journal in (config.output.path / "requests").glob("*.jsonl"):
             pending = set()
-            for line in journal.read_text("utf-8").splitlines():
-                row = json.loads(line)
-                if row.get("run_manifest_sha256") != self.fixture_run_digest:
-                    raise ConfigError(
-                        "request journal binding differs; inspect before resume"
-                    )
-                identity = (row.get("attempt"), row["step"])
-                if row["kind"] == "request":
-                    if identity in pending:
-                        raise ConfigError("duplicate unresolved API request")
-                    pending.add(identity)
-                else:
-                    pending.discard(identity)
+            with journal.open(encoding="utf-8") as source:
+                for line in source:
+                    row = json.loads(line)
+                    if row.get("run_manifest_sha256") != self.fixture_run_digest:
+                        raise ConfigError(
+                            "request journal binding differs; inspect before resume"
+                        )
+                    identity = (row.get("attempt"), row["step"])
+                    if row["kind"] == "request":
+                        if identity in pending:
+                            raise ConfigError("duplicate unresolved API request")
+                        pending.add(identity)
+                    else:
+                        pending.discard(identity)
             if pending:
                 raise ConfigError(
                     "unresolved API request; do not blindly resume/retry; inspect remote provider and journal"
@@ -194,11 +204,12 @@ class Runner:
         if not (self.config.runner.checkpoint and self.results_path.is_file()):
             return set()
         done = set()
-        for line in self.results_path.read_text("utf-8").splitlines():
-            if line.strip():
-                row = json.loads(line)
-                if row.get("exit_status") != "error":
-                    done.add((row["task_id"], row.get("sample_idx", 0)))
+        with self.results_path.open(encoding="utf-8") as source:
+            for line in source:
+                if line.strip():
+                    row = json.loads(line)
+                    if row.get("exit_status") != "error":
+                        done.add((row["task_id"], row.get("sample_idx", 0)))
         return done
 
     async def _run_one(

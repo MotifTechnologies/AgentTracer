@@ -212,22 +212,23 @@ class BFCLFixtureDataset:
     def load(self, split: str = "test", limit: int | None = None) -> list[Task]:
         tasks = []
         seen = set()
-        for line in self.path.read_text("utf-8").splitlines():
-            if not line.strip():
-                continue
-            fixture = Fixture.model_validate_json(line)
-            if fixture.task_id in seen:
-                raise ConfigError("duplicate fixture task identity")
-            seen.add(fixture.task_id)
-            tasks.append(
-                Task(
-                    fixture.task_id,
-                    fixture.user_turns[0].content,
-                    metadata={"bfcl_fixture": fixture.model_dump(by_alias=True)},
+        with self.path.open(encoding="utf-8") as source:
+            for line in source:
+                if not line.strip():
+                    continue
+                fixture = Fixture.model_validate_json(line)
+                if fixture.task_id in seen:
+                    raise ConfigError("duplicate fixture task identity")
+                seen.add(fixture.task_id)
+                tasks.append(
+                    Task(
+                        fixture.task_id,
+                        fixture.user_turns[0].content,
+                        metadata={"bfcl_fixture": fixture.model_dump(by_alias=True)},
+                    )
                 )
-            )
-            if limit is not None and len(tasks) >= limit:
-                break
+                if limit is not None and len(tasks) >= limit:
+                    break
         return tasks
 
     def evaluate(self, task: Task, submission: str | None) -> EvalResult:

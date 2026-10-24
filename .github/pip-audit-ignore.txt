@@ -6,27 +6,4 @@
 # upstream pin moves — the weekly Security run prints the unfiltered report
 # so a fixed entry does not sit here forever.
 
-# --- pillow 11.3.0, reviewed 2026-09-07 -------------------------------------
-# Image-decoder issues, all fixed in pillow 12.x. We cannot take the fix:
-# moviepy 2.2.1 (the newest release, pulled in by stirrup) requires
-# pillow<12.0. Nothing in agent_tracer decodes images itself; pillow arrives
-# through moviepy/imageio for video and through python-pptx in the dev group.
-# Re-check when moviepy ships a release without the <12.0 pin.
-PYSEC-2026-165
-PYSEC-2026-2249
-PYSEC-2026-2250
-PYSEC-2026-2251
-PYSEC-2026-2252
-PYSEC-2026-2253
-PYSEC-2026-2254
-PYSEC-2026-2255
-PYSEC-2026-2256
-PYSEC-2026-2257
-PYSEC-2026-2874
-PYSEC-2026-3451
-PYSEC-2026-3453
-PYSEC-2026-3454
-PYSEC-2026-3493
-PYSEC-2026-3494
-PYSEC-2026-3495
-PYSEC-2026-3496
+# No accepted exceptions as of 2026-10-24. Pillow is now locked to 13.0.0.

@@ -62,10 +62,12 @@ uv run pytest -q                     # tests
 uv lock --check                      # uv.lock matches pyproject.toml
 uv run mypy                          # types
 uv run bandit -c pyproject.toml -r src -q --severity-level medium
-uv export --no-emit-project --format requirements-txt --no-dev -o requirements-audit.txt
-grep -oE '^(PYSEC|GHSA|CVE)-[A-Za-z0-9.-]+' .github/pip-audit-ignore.txt \
-  | sed 's/^/--ignore-vuln=/' \
-  | xargs uv run pip-audit --strict -r requirements-audit.txt
+uv export --locked --no-emit-project --format requirements-txt --no-dev -o requirements-audit.txt
+mapfile -t IGNORE < <(
+  grep -oE '^(PYSEC|GHSA|CVE)-[A-Za-z0-9.-]+' .github/pip-audit-ignore.txt \
+    | sed 's/^/--ignore-vuln=/'
+)
+uv run pip-audit --strict --disable-pip --require-hashes "${IGNORE[@]}" -r requirements-audit.txt
 uv sync --locked --dev --group compliance
 uv run --no-sync python .github/scripts/build_sbom.py
 uv run --no-sync python .github/scripts/check_licenses.py sbom/*.cdx.json --report sbom/license-report.json
@@ -93,6 +95,21 @@ installed. Vulnerabilities we cannot fix are listed with a reason in
 `.github/pip-audit-ignore.txt`; consult that file and the current audit report
 for the affected versions and advisories. Add to that file only
 when upstream leaves no fix, and delete entries as soon as one lands.
+
+The root project uses a uv override for Pillow 13.0.0 because MoviePy 2.2.1's
+published metadata requires Pillow below 12. Install with `uv sync --locked`;
+plain pip does not apply this override. `tests/test_media_compat.py` exercises
+Stirrup image validation/downscaling and MP4 transcoding, MoviePy resizing,
+rotation and alpha composition, and python-pptx image embedding with Pillow 13.
+Keep the override pinned to a tested version and remove it when an upstream
+MoviePy release permits the patched Pillow. The PDF MCP server has a separate
+Pillow lock and does not need this override.
+
+The audit uses `--disable-pip --require-hashes` to inspect every applicable entry
+in the complete `uv export --locked` output without re-resolving dependencies
+using pip's incompatible metadata. This preserves the resolved package set and
+does not exempt any package from vulnerability checks. Do not use this mode with
+a hand-written list of direct dependencies.
 
 `typecheck` runs mypy over `src/` and blocks like the rest. It is clean; keep
 it that way. Where a value is guaranteed by a Pydantic validator that mypy

@@ -17,11 +17,19 @@ dependencies = [
     "mcp>=2.3.0,<3",
     "pyyaml>=6.0.3",
     "stirrup[docker,mcp]==0.2.0",
+    "jsonschema>=4.26.0,<5",
+    "referencing>=0.37.0,<1",
 ]
 
 [build-system]
 requires = ["uv_build>=0.13.4,<0.14.0"]
 build-backend = "uv_build"
+
+[tool.uv]
+# MoviePy 2.2.1 caps Pillow below 12, retaining decoder vulnerabilities.
+# Keep this override at the version exercised by tests/test_media_compat.py;
+# remove it when MoviePy releases compatible dependency metadata.
+override-dependencies = ["pillow==13.0.0"]
 
 [dependency-groups]
 compliance = [

@@ -57,5 +57,5 @@ class TestEtaSurvivesSlowTasks:
     def test_the_runner_asks_for_the_wider_window(self):
         import inspect
 
-        source = inspect.getsource(Runner.run)
+        source = inspect.getsource(Runner._run_batch)
         assert "speed_estimate_period=3600" in source

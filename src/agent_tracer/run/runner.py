@@ -28,6 +28,7 @@ from rich.text import Text
 from agent_tracer.config.schema import RunConfig
 from agent_tracer.core.task import Task
 from agent_tracer.core.trajectory import Trajectory
+from agent_tracer.datasets.bfcl_fixture import BFCLFixtureDataset
 from agent_tracer.datasets.custom import get_dataset
 from agent_tracer.environments import SandboxMissingBinariesError
 from agent_tracer.mcp.discovery import build_stirrup_mcp_config, discover_mcp_servers
@@ -78,7 +79,11 @@ class _TokenCounter:
 class Runner:
     def __init__(self, config: RunConfig):
         self.config = config
-        self.manifests = discover_mcp_servers(config.mcp)
+        self.manifests = (
+            {}
+            if config.dataset.name == "bfcl_fixture"
+            else discover_mcp_servers(config.mcp)
+        )
         self.mcp_config = (
             build_stirrup_mcp_config(
                 self.manifests, config.mcp.resolved_discovery_dir()
@@ -86,23 +91,101 @@ class Runner:
             if self.manifests
             else None
         )
-        self.orchestrator = SingleAgentOrchestrator(
+        self.orchestrator: Any = SingleAgentOrchestrator(
             config,
             self.mcp_config,
             manifests=self.manifests or None,
             mcp_root=config.mcp.resolved_discovery_dir() if self.manifests else None,
         )
+        if config.dataset.name == "bfcl_fixture":
+            from agent_tracer.orchestrators.bfcl_fixture import BFCLFixtureOrchestrator
+
+            self.orchestrator = BFCLFixtureOrchestrator(config)
         self.trajectory_dir = config.output.path / "trajectories"
         self.results_path = config.output.path / "results.jsonl"
+        self.fixture_run_digest: str | None = None
+        if config.dataset.name == "bfcl_fixture":
+            self._validate_fixture_output()
+
+    def _validate_fixture_output(self) -> None:
+        config = self.config
+        from agent_tracer.config.schema import ConfigError
+        from agent_tracer.datasets.bfcl_fixture import digest
+
+        if config.runner.retry.max_attempts != 1 or config.model.max_retries != 0:
+            raise ConfigError(
+                "bfcl_fixture disallows automatic API/task retries; inspect journals and explicitly recover uncertain requests"
+            )
+        data_path = config.dataset.path
+        assert data_path is not None
+        manifest = {
+            "dataset_sha256": __import__("hashlib")
+            .sha256(data_path.read_bytes())
+            .hexdigest(),
+            "model_config_sha256": digest(config.model.model_dump(exclude={"api_key"})),
+            "agent": config.agent.model_dump(),
+            "runner": config.runner.model_dump(),
+            "protocol": "native-fc-no-tool-turn-end-v1",
+        }
+        self.fixture_run_digest = digest(manifest)
+        manifest["binding_sha256"] = self.fixture_run_digest
+        config.output.path.mkdir(parents=True, exist_ok=True)
+        path = config.output.path / "fixture-run-manifest.json"
+        if path.exists():
+            if json.loads(path.read_text("utf-8")) != manifest:
+                raise ConfigError(
+                    "fixture/config changed under an existing output; use a new output directory"
+                )
+        else:
+            # A missing binding must not adopt another run's results or journals.
+            # The reservation is the only entry created by this collector itself.
+            if any(
+                entry.name != ".fixture-collector.lock"
+                for entry in config.output.path.iterdir()
+            ):
+                raise ConfigError(
+                    "existing output without a fixture manifest cannot be verified; use a new output directory"
+                )
+            with path.open("x", encoding="utf-8") as out:
+                json.dump(manifest, out, indent=2)
+        for journal in (config.output.path / "requests").glob("*.jsonl"):
+            pending = set()
+            with journal.open(encoding="utf-8") as source:
+                for line in source:
+                    row = json.loads(line)
+                    if row.get("run_manifest_sha256") != self.fixture_run_digest:
+                        raise ConfigError(
+                            "request journal binding differs; inspect before resume"
+                        )
+                    identity = (row.get("attempt"), row["step"])
+                    if row["kind"] == "request":
+                        if identity in pending:
+                            raise ConfigError("duplicate unresolved API request")
+                        pending.add(identity)
+                    else:
+                        pending.discard(identity)
+            if pending:
+                raise ConfigError(
+                    "unresolved API request; do not blindly resume/retry; inspect remote provider and journal"
+                )
+            stem = journal.name.removesuffix(".jsonl")
+            task_id, sample_text = stem.rsplit(".s", 1)
+            if (task_id, int(sample_text)) not in self._completed_samples():
+                raise ConfigError(
+                    "existing API journal without terminal sample result; recover saved responses offline, never repeat paid calls blindly"
+                )
 
     def _base_metadata(self) -> dict[str, Any]:
         return {
             "dataset": self.config.dataset.name,
-            "orchestrator": "single",
+            "orchestrator": "bfcl_fixture"
+            if self.config.dataset.name == "bfcl_fixture"
+            else "single",
             "model": {
                 "model_name": self.config.model.model_name,
                 "base_url": self.config.model.base_url,
                 "reasoning_key": self.config.model.reasoning_key,
+                "reasoning_effort": self.config.model.reasoning_effort,
             },
             "environment": self.config.environment.type,
             "mcp_servers": {
@@ -121,11 +204,12 @@ class Runner:
         if not (self.config.runner.checkpoint and self.results_path.is_file()):
             return set()
         done = set()
-        for line in self.results_path.read_text("utf-8").splitlines():
-            if line.strip():
-                row = json.loads(line)
-                if row.get("exit_status") != "error":
-                    done.add((row["task_id"], row.get("sample_idx", 0)))
+        with self.results_path.open(encoding="utf-8") as source:
+            for line in source:
+                if line.strip():
+                    row = json.loads(line)
+                    if row.get("exit_status") != "error":
+                        done.add((row["task_id"], row.get("sample_idx", 0)))
         return done
 
     async def _run_one(
@@ -138,7 +222,11 @@ class Runner:
             trajectory = Trajectory(
                 task_id=task.task_id,
                 sample_idx=sample_idx,
-                metadata=self._base_metadata(),
+                metadata={
+                    **self._base_metadata(),
+                    "run_manifest_sha256": self.fixture_run_digest,
+                    "attempt": attempt,
+                },
             )
             try:
                 result = await asyncio.wait_for(
@@ -150,7 +238,10 @@ class Runner:
                 dataset = get_dataset(
                     self.config.dataset.name, self.config.dataset.path
                 )
-                evaluation = dataset.evaluate(task, result["submission"])
+                if isinstance(dataset, BFCLFixtureDataset):
+                    evaluation = dataset.evaluate_trajectory(task, trajectory)
+                else:
+                    evaluation = dataset.evaluate(task, result["submission"])
                 trajectory.finish(
                     {
                         "submission": result["submission"],
@@ -232,6 +323,17 @@ class Runner:
         await asyncio.to_thread(release_image, self.config.environment.type, image)
 
     async def run(self) -> list[dict[str, Any]]:
+        if self.config.dataset.name == "bfcl_fixture":
+            from agent_tracer.run.fixture_lock import exclusive_fixture_output
+
+            with exclusive_fixture_output(self.config.output.path):
+                # Recheck under the lock: this Runner may have been constructed
+                # before another collector changed the output.
+                self._validate_fixture_output()
+                return await self._run_batch()
+        return await self._run_batch()
+
+    async def _run_batch(self) -> list[dict[str, Any]]:
         dataset = get_dataset(self.config.dataset.name, self.config.dataset.path)
         tasks = dataset.load(self.config.dataset.split, self.config.dataset.limit)
 
@@ -280,5 +382,14 @@ class Runner:
             await self._release_when_last(task, remaining_by_image, image_lock)
 
         with progress:
-            await asyncio.gather(*(worker(t, i) for t, i in pending))
+            workers = [asyncio.create_task(worker(t, i)) for t, i in pending]
+            try:
+                await asyncio.gather(*workers)
+            except BaseException:
+                # Do not release a fixture reservation while sibling requests
+                # still run. Their journals remain available for recovery.
+                for running in workers:
+                    running.cancel()
+                await asyncio.gather(*workers, return_exceptions=True)
+                raise
         return results

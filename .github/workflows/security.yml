@@ -46,7 +46,7 @@ jobs:
       # Audit what uv.lock actually resolves, not what happens to be installed.
       # --no-emit-project drops agent-tracer itself, which is not on PyPI.
       - name: Export the locked dependency set
-        run: uv export --no-emit-project --format requirements-txt --no-dev -o requirements-audit.txt
+        run: uv export --locked --no-emit-project --format requirements-txt --no-dev -o requirements-audit.txt
       - name: pip-audit
         run: |
           mapfile -t IGNORE < <(
@@ -54,12 +54,14 @@ jobs:
               | sed 's/^/--ignore-vuln=/'
           )
           echo "Accepted exceptions: ${#IGNORE[@]}"
-          uv run pip-audit --strict --progress-spinner off "${IGNORE[@]}" -r requirements-audit.txt
+          # Audit every entry in uv's complete, pinned, hashed export. Re-running
+          # pip's resolver would discard the tested Pillow override in pyproject.
+          uv run pip-audit --strict --disable-pip --require-hashes --progress-spinner off "${IGNORE[@]}" -r requirements-audit.txt
       # Unfiltered, so an accepted exception that upstream has since fixed
       # shows up instead of quietly ageing in the ignore file.
       - name: Full report (advisory)
         if: always()
-        run: uv run pip-audit --progress-spinner off -r requirements-audit.txt || true
+        run: uv run pip-audit --disable-pip --require-hashes --progress-spinner off -r requirements-audit.txt || true
 
   licenses:
     name: licenses

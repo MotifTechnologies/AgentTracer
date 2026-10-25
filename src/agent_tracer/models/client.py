@@ -12,6 +12,7 @@ argument here; the pinned stirrup version keeps this adaptation stable.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
 
@@ -35,6 +36,13 @@ from stirrup.clients.utils import to_openai_messages, to_openai_tools
 NO_REASONING = "none"
 
 
+@dataclass
+class NativeCompletion:
+    assistant: AssistantMessage
+    history: dict[str, Any]
+    response: dict[str, Any]
+
+
 class ReasoningKeyChatClient(ChatCompletionsClient):
     """ChatCompletionsClient that reads reasoning text from a configured key.
 
@@ -43,27 +51,57 @@ class ReasoningKeyChatClient(ChatCompletionsClient):
     trajectory. Pass ``"none"`` explicitly for non-reasoning models.
     """
 
-    def __init__(self, *args: Any, reasoning_key: str, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *args: Any,
+        reasoning_key: str,
+        send_max_tokens: bool = True,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(*args, **kwargs)
         if not reasoning_key:
             raise ValueError(
                 "reasoning_key is required ('none' for non-reasoning models)"
             )
         self._reasoning_key = reasoning_key
+        self._send_max_tokens = send_max_tokens
 
     async def generate(
         self,
         messages: list[ChatMessage],
         tools: dict[str, Tool],
     ) -> AssistantMessage:
+        completion = await self.generate_native(
+            to_openai_messages(messages), to_openai_tools(tools) if tools else []
+        )
+        reason = completion.response["choices"][0]["finish_reason"]
+        if reason in ("max_tokens", "length"):
+            raise OutputTokenLimitError(
+                model_slug=self.model_slug,
+                max_tokens=self._max_tokens,
+                provider_reason=reason,
+            )
+        return completion.assistant
+
+    async def generate_native(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+    ) -> NativeCompletion:
+        """Preserve fixture message/schema bytes and provider reasoning history.
+
+        This bypasses Stirrup's message/tool rendering, not the shared client.
+        The caller owns prompt assembly, tool execution and termination.
+        """
         request_kwargs: dict[str, Any] = {
             "model": self._model,
-            "messages": to_openai_messages(messages),
-            "max_completion_tokens": self._max_tokens,
+            "messages": messages,
             **self._kwargs,
         }
+        if self._send_max_tokens:
+            request_kwargs["max_completion_tokens"] = self._max_tokens
         if tools:
-            request_kwargs["tools"] = to_openai_tools(tools)
+            request_kwargs["tools"] = tools
             request_kwargs["tool_choice"] = "auto"
         if self._reasoning_effort:
             request_kwargs["reasoning_effort"] = self._reasoning_effort
@@ -78,13 +116,6 @@ class ReasoningKeyChatClient(ChatCompletionsClient):
         request_end_time = perf_counter()
 
         choice = response.choices[0]
-        if choice.finish_reason in ("max_tokens", "length"):
-            raise OutputTokenLimitError(
-                model_slug=self.model_slug,
-                max_tokens=self._max_tokens,
-                provider_reason=choice.finish_reason,
-            )
-
         msg = choice.message
         blocks: list[AssistantBlock] = []
 
@@ -116,7 +147,7 @@ class ReasoningKeyChatClient(ChatCompletionsClient):
                 getattr(usage.completion_tokens_details, "reasoning_tokens", 0) or 0
             )
 
-        return AssistantMessage(
+        assistant = AssistantMessage(
             blocks=blocks,
             token_usage=TokenUsage(
                 input=input_tokens,
@@ -126,3 +157,23 @@ class ReasoningKeyChatClient(ChatCompletionsClient):
             request_start_time=request_start_time,
             request_end_time=request_end_time,
         )
+        # Retain reasoning_details/signatures verbatim for subsequent requests.
+        # Do not put headers, client configuration or resolved secrets here.
+        history: dict[str, Any] = {"role": "assistant", "content": msg.content}
+        history_fields: tuple[str, ...] = (
+            "tool_calls",
+            "reasoning",
+            "reasoning_content",
+            "reasoning_details",
+        )
+        if self._reasoning_key != NO_REASONING:
+            history_fields += (self._reasoning_key,)
+        native_message = msg.model_dump(mode="json")
+        for field in history_fields:
+            value = native_message.get(field)
+            if value is not None:
+                history[field] = value
+        return NativeCompletion(assistant, history, response.model_dump(mode="json"))
+
+    async def close(self) -> None:
+        await self._client.close()

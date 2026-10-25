@@ -56,6 +56,12 @@ class CustomDataset:
 
 
 def get_dataset(name: str, path: Path | None):
+    if name == "bfcl_fixture":
+        if path is None:
+            raise ConfigError("dataset: bfcl_fixture requires path")
+        from agent_tracer.datasets.bfcl_fixture import BFCLFixtureDataset
+
+        return BFCLFixtureDataset(path)
     if name in ("custom", "swebench_local"):
         if path is None:
             # DatasetConfig._custom_needs_path rejects this first, so a run

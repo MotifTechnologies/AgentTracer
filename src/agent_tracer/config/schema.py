@@ -60,6 +60,7 @@ class ModelConfig(StrictModel):
         )
     )
     max_tokens: int = 32768
+    send_max_tokens: bool = True
     context_window_tokens: int = 131072
     reasoning_effort: str | None = None
     timeout: float = 120.0
@@ -227,7 +228,10 @@ class DatasetConfig(StrictModel):
 
     @model_validator(mode="after")
     def _custom_needs_path(self) -> DatasetConfig:
-        if self.name in ("custom", "swebench_local") and self.path is None:
+        if (
+            self.name in ("custom", "swebench_local", "bfcl_fixture")
+            and self.path is None
+        ):
             raise ConfigError(
                 f"dataset: {self.name} dataset requires 'path' (JSONL file)"
             )

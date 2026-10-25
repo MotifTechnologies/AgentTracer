@@ -1,0 +1,19 @@
+dataset:
+  name: bfcl_fixture
+  path: data/seeds/bfcl-fixture-sample.jsonl
+model:
+  model_name: your-served-model
+  base_url: http://127.0.0.1:8000/v1
+  api_key: env:MODEL_API_KEY
+  reasoning_key: none
+  max_tokens: 16384
+  send_max_tokens: false
+  context_window_tokens: 262144
+  max_retries: 0
+agent:
+  max_turns: 12
+runner:
+  max_concurrency: 2
+  retry: {max_attempts: 1}
+output:
+  path: results/bfcl-fixture

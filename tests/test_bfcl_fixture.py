@@ -201,9 +201,7 @@ def test_hidden_state_and_oracle_never_reach_native_request(tmp_path, monkeypatc
         async def close(self):
             pass
 
-    monkeypatch.setattr(
-        "agent_tracer.orchestrators.bfcl_fixture.ReasoningKeyChatClient", Client
-    )
+    monkeypatch.setattr("agent_tracer.orchestrators.bfcl_fixture.build_client", Client)
     config = RunConfig(
         dataset=DatasetConfig(name="bfcl_fixture", path=tmp_path / "unused"),
         model=ModelConfig(

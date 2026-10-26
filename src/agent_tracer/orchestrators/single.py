@@ -24,7 +24,7 @@ from stirrup import Agent, Tool, ToolResult, ToolUseCountMetadata
 from agent_tracer.config.schema import ConfigError, RunConfig
 from agent_tracer.core.task import Task
 from agent_tracer.core.trajectory import Trajectory
-from agent_tracer.models.client import ReasoningKeyChatClient
+from agent_tracer.models.client import build_client
 from agent_tracer.recording.recorder import TokenCallback, TrajectoryRecorder
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -138,22 +138,6 @@ class SingleAgentOrchestrator:
         # differs per task and a manifest, read once at startup, cannot carry it.
         self.manifests = manifests
         self.mcp_root = mcp_root
-
-    def _build_client(self) -> ReasoningKeyChatClient:
-        m = self.config.model
-        return ReasoningKeyChatClient(
-            m.model_name,
-            m.max_tokens,
-            context_window_tokens=m.context_window_tokens,
-            base_url=m.base_url,
-            api_key=m.resolved_api_key(),
-            reasoning_effort=m.reasoning_effort,
-            send_max_tokens=m.send_max_tokens,
-            timeout=m.timeout,
-            max_retries=m.max_retries,
-            kwargs=m.extra_kwargs or None,
-            reasoning_key=m.reasoning_key,
-        )
 
     async def run_task(
         self,
@@ -317,7 +301,7 @@ class SingleAgentOrchestrator:
         tools: list[Any],
     ) -> dict[str, Any]:
         agent = Agent(
-            self._build_client(),
+            build_client(self.config.model),
             name=agent_id,
             max_turns=self.config.agent.max_turns,
             system_prompt=self.config.agent.system_prompt or DEFAULT_SYSTEM_PROMPT,

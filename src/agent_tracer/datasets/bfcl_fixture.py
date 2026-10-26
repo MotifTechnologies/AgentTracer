@@ -15,10 +15,10 @@ from pathlib import Path
 from typing import Any, Literal
 
 from jsonschema import Draft202012Validator, FormatChecker
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
 from referencing import Registry
 
-from agent_tracer.config.schema import ConfigError
+from agent_tracer.config.schema import ConfigError, StrictModel
 from agent_tracer.core.task import EvalResult, Task
 
 
@@ -28,11 +28,7 @@ def digest(value: Any) -> str:
     ).hexdigest()
 
 
-class Strict(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-
-class Operation(Strict):
+class Operation(StrictModel):
     kind: Literal["get", "query", "update", "create", "delete", "calculate"]
     collection: str = ""
     key_argument: str = "id"
@@ -62,7 +58,7 @@ def check_self_contained_schema(value: Any) -> None:
             check_self_contained_schema(child)
 
 
-class FixtureTool(Strict):
+class FixtureTool(StrictModel):
     schema_: dict[str, Any] = Field(alias="schema")
     operation: Operation
 
@@ -81,7 +77,7 @@ class FixtureTool(Strict):
         return self
 
 
-class UserTurn(Strict):
+class UserTurn(StrictModel):
     content: str
     expected_state: dict[str, Any]
     answer_contains: list[str] = Field(default_factory=list)
@@ -91,7 +87,7 @@ class UserTurn(Strict):
     min_parallel_calls: int = 0
 
 
-class Fixture(Strict):
+class Fixture(StrictModel):
     task_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
     category: str
     system_prompt: str | None = None
@@ -162,20 +158,15 @@ class FixtureBackend:
         if op.kind == "delete":
             del records[key]
             return {"deleted": key}
+        written = {
+            field: copy.deepcopy(arguments[arg]) for arg, field in op.writes.items()
+        }
         if op.kind == "create":
             if key in records:
                 raise ValueError("record already exists")
-            records[key] = {
-                field: copy.deepcopy(arguments[arg]) for arg, field in op.writes.items()
-            }
+            records[key] = written
         else:
-            row = records[key]
-            row.update(
-                {
-                    field: copy.deepcopy(arguments[arg])
-                    for arg, field in op.writes.items()
-                }
-            )
+            records[key].update(written)
         return copy.deepcopy(records[key])
 
 

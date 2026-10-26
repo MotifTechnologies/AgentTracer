@@ -5,25 +5,11 @@ Line schema: {"task_id": str, "input": str, "reference"?: str, "metadata"?: dict
 
 from __future__ import annotations
 
-import json
-from collections.abc import Iterator
 from pathlib import Path
 
 from agent_tracer.config.schema import ConfigError
 from agent_tracer.core.task import EvalResult, Task
-
-
-def iter_jsonl_rows(path: Path) -> Iterator[tuple[int, dict]]:
-    """Yield ``(lineno, row)`` per non-blank line, as ConfigErrors on bad input."""
-    if not path.is_file():
-        raise ConfigError(f"dataset: {path} not found")
-    for lineno, line in enumerate(path.read_text("utf-8").splitlines(), 1):
-        if not line.strip():
-            continue
-        try:
-            yield lineno, json.loads(line)
-        except json.JSONDecodeError as e:
-            raise ConfigError(f"dataset: {path}:{lineno} invalid JSON: {e}") from e
+from agent_tracer.datasets.jsonl import iter_jsonl_rows
 
 
 class CustomDataset:

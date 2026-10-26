@@ -80,6 +80,7 @@ class _TokenCounter:
 class Runner:
     def __init__(self, config: RunConfig):
         self.config = config
+        self.dataset = get_dataset(config.dataset.name, config.dataset.path)
         self.manifests = (
             {}
             if config.dataset.name == "bfcl_fixture"
@@ -119,8 +120,10 @@ class Runner:
             )
         data_path = config.dataset.path
         assert data_path is not None
+        with data_path.open("rb") as source:
+            dataset_sha256 = hashlib.file_digest(source, "sha256").hexdigest()
         manifest = {
-            "dataset_sha256": hashlib.sha256(data_path.read_bytes()).hexdigest(),
+            "dataset_sha256": dataset_sha256,
             "model_config_sha256": digest(config.model.model_dump(exclude={"api_key"})),
             "agent": config.agent.model_dump(),
             "runner": config.runner.model_dump(),
@@ -331,7 +334,6 @@ class Runner:
         return await self._run_batch()
 
     async def _run_batch(self) -> list[dict[str, Any]]:
-        self.dataset = get_dataset(self.config.dataset.name, self.config.dataset.path)
         tasks = self.dataset.load(self.config.dataset.split, self.config.dataset.limit)
 
         samples = self.config.runner.samples_per_task

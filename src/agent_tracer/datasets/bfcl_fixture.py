@@ -15,11 +15,12 @@ from pathlib import Path
 from typing import Any, Literal
 
 from jsonschema import Draft202012Validator, FormatChecker
-from pydantic import Field, model_validator
+from pydantic import Field, ValidationError, model_validator
 from referencing import Registry
 
 from agent_tracer.config.schema import ConfigError, StrictModel
 from agent_tracer.core.task import EvalResult, Task
+from agent_tracer.datasets.jsonl import iter_jsonl_rows
 
 
 def digest(value: Any) -> str:
@@ -110,6 +111,10 @@ class Fixture(StrictModel):
         return self
 
 
+def _written_values(op: Operation, arguments: dict[str, Any]) -> dict[str, Any]:
+    return {field: copy.deepcopy(arguments[arg]) for arg, field in op.writes.items()}
+
+
 class FixtureBackend:
     """Bounded declarative operations; never evaluate teacher-supplied code."""
 
@@ -158,15 +163,13 @@ class FixtureBackend:
         if op.kind == "delete":
             del records[key]
             return {"deleted": key}
-        written = {
-            field: copy.deepcopy(arguments[arg]) for arg, field in op.writes.items()
-        }
         if op.kind == "create":
             if key in records:
                 raise ValueError("record already exists")
-            records[key] = written
+            records[key] = _written_values(op, arguments)
         else:
-            records[key].update(written)
+            # Resolve the record before write arguments, preserving tool errors.
+            records[key].update(_written_values(op, arguments))
         return copy.deepcopy(records[key])
 
 
@@ -203,23 +206,27 @@ class BFCLFixtureDataset:
     def load(self, split: str = "test", limit: int | None = None) -> list[Task]:
         tasks = []
         seen = set()
-        with self.path.open(encoding="utf-8") as source:
-            for line in source:
-                if not line.strip():
-                    continue
-                fixture = Fixture.model_validate_json(line)
-                if fixture.task_id in seen:
-                    raise ConfigError("duplicate fixture task identity")
-                seen.add(fixture.task_id)
-                tasks.append(
-                    Task(
-                        fixture.task_id,
-                        fixture.user_turns[0].content,
-                        metadata={"bfcl_fixture": fixture.model_dump(by_alias=True)},
-                    )
+        for lineno, row in iter_jsonl_rows(self.path):
+            try:
+                fixture = Fixture.model_validate(row)
+            except ValidationError as exc:
+                raise ConfigError(
+                    f"dataset: {self.path}:{lineno} invalid fixture: {exc}"
+                ) from exc
+            if fixture.task_id in seen:
+                raise ConfigError(
+                    f"dataset: {self.path}:{lineno} duplicate fixture task identity"
                 )
-                if limit is not None and len(tasks) >= limit:
-                    break
+            seen.add(fixture.task_id)
+            tasks.append(
+                Task(
+                    fixture.task_id,
+                    fixture.user_turns[0].content,
+                    metadata={"bfcl_fixture": fixture.model_dump(by_alias=True)},
+                )
+            )
+            if limit is not None and len(tasks) >= limit:
+                break
         return tasks
 
     def evaluate(self, task: Task, submission: str | None) -> EvalResult:

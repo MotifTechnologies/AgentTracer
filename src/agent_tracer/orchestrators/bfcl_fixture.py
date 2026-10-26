@@ -6,6 +6,7 @@ import copy
 import json
 from pathlib import Path
 from time import perf_counter
+from typing import Any
 
 from stirrup import ToolMessage, UserMessage
 
@@ -17,6 +18,13 @@ from agent_tracer.datasets.bfcl_fixture import (
 )
 from agent_tracer.models.client import build_client
 from agent_tracer.recording.recorder import TrajectoryRecorder
+
+
+def _append_jsonl(path: Path, entry: dict[str, Any]) -> None:
+    """Persist each journal entry before the next request or history mutation."""
+    with path.open("a", encoding="utf-8") as out:
+        out.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        out.flush()
 
 
 class BFCLFixtureOrchestrator:
@@ -47,11 +55,6 @@ class BFCLFixtureOrchestrator:
         )
         journal.parent.mkdir(parents=True, exist_ok=True)
 
-        def journal_append(entry):
-            with journal.open("a", encoding="utf-8") as out:
-                out.write(json.dumps(entry, ensure_ascii=False) + "\n")
-                out.flush()
-
         binding = {
             "fixture_sha256": trajectory.metadata["fixture_sha256"],
             "run_manifest_sha256": trajectory.metadata.get("run_manifest_sha256"),
@@ -74,7 +77,8 @@ class BFCLFixtureOrchestrator:
                 for _ in range(self.config.agent.max_turns):
                     total_steps += 1
                     # Append intent before sending so interruption cannot hide an in-flight request.
-                    journal_append(
+                    _append_jsonl(
+                        journal,
                         {
                             "kind": "request",
                             "messages": messages,
@@ -82,16 +86,17 @@ class BFCLFixtureOrchestrator:
                             "turn_index": turn_index,
                             "step": total_steps,
                             **binding,
-                        }
+                        },
                     )
                     completion = await client.generate_native(messages, tools)
-                    journal_append(
+                    _append_jsonl(
+                        journal,
                         {
                             "kind": "response",
                             "step": total_steps,
                             **binding,
                             "response": completion.response,
-                        }
+                        },
                     )
                     recorder.assistant_message(
                         total_steps, self.config.agent.max_turns, completion.assistant

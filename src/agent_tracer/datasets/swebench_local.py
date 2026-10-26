@@ -17,11 +17,11 @@ grade offline without re-running the agent.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from agent_tracer.config.schema import ConfigError
 from agent_tracer.core.task import EvalResult, Task
+from agent_tracer.datasets.jsonl import iter_jsonl_rows
 
 _REQUIRED = ("repo", "instance_id", "base_commit", "problem_statement", "patch")
 
@@ -47,18 +47,8 @@ class SWEBenchLocalDataset:
         self.path = path
 
     def load(self, split: str = "test", limit: int | None = None) -> list[Task]:
-        if not self.path.is_file():
-            raise ConfigError(f"dataset: {self.path} not found")
         tasks: list[Task] = []
-        for lineno, line in enumerate(self.path.read_text("utf-8").splitlines(), 1):
-            if not line.strip():
-                continue
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError as e:
-                raise ConfigError(
-                    f"dataset: {self.path}:{lineno} invalid JSON: {e}"
-                ) from e
+        for lineno, row in iter_jsonl_rows(self.path):
             missing = [k for k in _REQUIRED if not row.get(k)]
             if missing:
                 raise ConfigError(

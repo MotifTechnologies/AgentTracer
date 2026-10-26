@@ -1,5 +1,7 @@
 import asyncio
+import hashlib
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -86,6 +88,29 @@ def test_schema_failure_does_not_mutate_state():
     with pytest.raises(ValidationError):
         b.execute("inventory_set_quantity", {"item_id": "k1", "quantity": "5"})
     assert b.state["inventory"]["k1"]["quantity"] == 3
+
+
+@pytest.mark.parametrize(
+    ("kind", "key", "error_type", "message"),
+    [
+        ("create", "k1", ValueError, "record already exists"),
+        ("update", "absent", KeyError, "'absent'"),
+        ("create", "new", KeyError, "'quantity'"),
+        ("update", "k1", KeyError, "'quantity'"),
+    ],
+)
+def test_write_errors_keep_record_check_precedence(kind, key, error_type, message):
+    f = fixture()
+    f.tools[0].operation.kind = kind
+    # A schema may permit an omitted argument that the operation still needs.
+    f.tools[0].schema_["function"]["parameters"]["required"] = ["item_id"]
+    backend = FixtureBackend(f)
+
+    with pytest.raises(error_type) as error:
+        backend.execute("inventory_set_quantity", {"item_id": key})
+
+    assert str(error.value) == message
+    assert backend.state == f.initial_state
 
 
 @pytest.mark.parametrize("keyword", ["$ref", "$dynamicRef", "$recursiveRef"])
@@ -230,6 +255,12 @@ def test_hidden_state_and_oracle_never_reach_native_request(tmp_path, monkeypatc
         "content": '{"quantity": 5, "status": "ready"}',
     }
     assert requests[2]["messages"][-1]["content"] == "Thanks."
+    with (tmp_path / "requests" / "test1.s0.jsonl").open(encoding="utf-8") as source:
+        rows = [json.loads(line) for line in source]
+    assert [row["kind"] for row in rows] == ["request", "response"] * 3
+    assert [row["messages"] for row in rows if row["kind"] == "request"] == [
+        request["messages"] for request in requests
+    ]
     assert all(
         "initial_state" not in json.dumps(r) and "expected_state" not in json.dumps(r)
         for r in requests
@@ -402,6 +433,71 @@ def test_fixture_runner_uses_only_fixture_tools_and_manifest(tmp_path):
     assert runner.manifests == {}
     assert runner._base_metadata()["orchestrator"] == "bfcl_fixture"
     assert runner.fixture_run_digest
+
+
+def test_fixture_manifest_hashes_bytes_without_reading_the_whole_file(
+    tmp_path, monkeypatch
+):
+    from agent_tracer.run.runner import Runner
+
+    config = runner_config(tmp_path)
+    # Include non-ASCII bytes and CRLF so text normalization changes the digest.
+    data = fixture().model_dump(by_alias=True)
+    data["user_turns"][0]["content"] = "한글 요청"
+    payload = json.dumps(data, ensure_ascii=False).encode() + b"\r\n"
+    config.dataset.path.write_bytes(payload)
+    expected = hashlib.sha256(payload).hexdigest()
+
+    def no_read_bytes(path):
+        raise AssertionError("manifest hashing must stream the dataset")
+
+    monkeypatch.setattr(Path, "read_bytes", no_read_bytes)
+    Runner(config)
+
+    manifest = json.loads(
+        (config.output.path / "fixture-run-manifest.json").read_text("utf-8")
+    )
+    assert manifest["dataset_sha256"] == expected
+
+
+def test_journal_intent_is_readable_before_a_failed_request_and_client_closes(
+    tmp_path, monkeypatch
+):
+    config = runner_config(tmp_path)
+    task = BFCLFixtureDataset(config.dataset.path).load()[0]
+    trajectory = Trajectory(
+        task.task_id,
+        sample_idx=1,
+        metadata={"run_manifest_sha256": "binding", "attempt": 2},
+    )
+    journal = config.output.path / "requests" / "test1.s1.jsonl"
+
+    class FailingClient:
+        closed = False
+
+        async def generate_native(self, messages, tools):
+            rows = [
+                json.loads(line) for line in journal.read_text("utf-8").splitlines()
+            ]
+            assert len(rows) == 1
+            assert rows[0]["kind"] == "request"
+            assert rows[0]["messages"] == messages
+            assert rows[0]["tools"] == tools
+            assert rows[0]["attempt"] == 2
+            assert rows[0]["run_manifest_sha256"] == "binding"
+            raise RuntimeError("provider interrupted")
+
+        async def close(self):
+            self.closed = True
+
+    client = FailingClient()
+    monkeypatch.setattr(
+        "agent_tracer.orchestrators.bfcl_fixture.build_client", lambda model: client
+    )
+    with pytest.raises(RuntimeError, match="provider interrupted"):
+        asyncio.run(BFCLFixtureOrchestrator(config).run_task(task, trajectory))
+    assert client.closed
+    assert len(journal.read_text("utf-8").splitlines()) == 1
 
 
 @pytest.mark.parametrize(

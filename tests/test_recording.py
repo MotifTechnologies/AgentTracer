@@ -55,6 +55,15 @@ class TestRecorder:
         assert trajectory.token_totals.input == 100
         assert seen == [(100, 50)]
 
+    def test_tool_less_turn_kept_by_default(self):
+        # The BFCL orchestrator ends a user turn on a text-only answer.
+        trajectory, recorder, _ = self._recorder()
+        recorder.assistant_message(1, 10, _assistant(reasoning="think", text="done"))
+        assert [e.event_type for e in trajectory.events] == [
+            "thinking",
+            "model_response",
+        ]
+
     def test_tool_result_event(self):
         trajectory, recorder, _ = self._recorder()
         recorder.tool_result(

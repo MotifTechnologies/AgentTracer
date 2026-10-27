@@ -146,8 +146,15 @@ class SingleAgentOrchestrator:
         on_tokens: TokenCallback | None = None,
     ) -> dict[str, Any]:
         agent_id = self.config.agent.role or "agent-0"
+        # After a turn with no tool call, upstream appends a "Please continue
+        # the task" user turn without calling any logger hook, so the export
+        # would show two assistant turns back to back. Both are left out; the
+        # record picks up at the turn the nudge produced.
         recorder = TrajectoryRecorder(
-            trajectory, agent_id=agent_id, on_tokens=on_tokens
+            trajectory,
+            agent_id=agent_id,
+            on_tokens=on_tokens,
+            skip_continued_turns=True,
         )
 
         from agent_tracer.environments import build_provider

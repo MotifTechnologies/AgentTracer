@@ -66,7 +66,7 @@ Every event carries the same five fields:
 | `user_message` | `{content}` | a real user turn reaches the model |
 | `injected_<kind>` | `{content}` | a harness-injected user turn, tagged with its stirrup `kind` — so exporters never mistake synthetic text for a real user turn |
 | `thinking` | `{content}` | a reasoning block in a model turn (one event per block) |
-| `model_response` | `{turn, content, tool_calls: [{tool_call_id, name, arguments}], usage: {input, reasoning, answer}, duration_s}` | one per model turn; `content` null when the turn was tool-calls only |
+| `model_response` | `{turn, content, tool_calls: [{tool_call_id, name, arguments}], usage: {input, reasoning, answer}, duration_s}` | one per model turn; `content` null when the turn was tool-calls only. A turn with no tool call that is not the last is not recorded (nor its `thinking`): the loop answers it with an unrecorded "Please continue the task", so `turn` skips its number |
 | `tool_call` | `{tool_call_id, name, arguments}` | one per call, duplicated out of `model_response` for stepwise consumers |
 | `tool_result` | `{tool_call_id, name, success, content, duration_s}` | the tool's answer returns to the loop |
 | `context_summarization_start` | `{pct_used, cutoff}` | context crossed the summarization cutoff |

@@ -41,10 +41,16 @@ class TrajectoryRecorder(AgentLoggerBase):
         trajectory: Trajectory,
         agent_id: str,
         on_tokens: TokenCallback | None = None,
+        skip_continued_turns: bool = False,
     ) -> None:
         self.trajectory = trajectory
         self.agent_id = agent_id
         self.on_tokens = on_tokens
+        # Leave out a turn with no tool call that is not the last one: stirrup
+        # answers it with an unlogged "Please continue the task" turn (with the
+        # turn warning threshold at 0, as the single orchestrator sets it).
+        # Off by default because elsewhere such a turn is a final answer.
+        self.skip_continued_turns = skip_continued_turns
         # Properties stirrup sets after construction
         self.name = agent_id
         self.model: str | None = None
@@ -95,14 +101,13 @@ class TrajectoryRecorder(AgentLoggerBase):
         assistant_message: AssistantMessage,
     ) -> None:
         usage = assistant_message.token_usage
+        thinking: list[str] = []
         content_parts: list[str] = []
         tool_calls: list[dict[str, Any]] = []
 
         for block in assistant_message.blocks:
             if isinstance(block, ReasoningBlock):
-                self.trajectory.add_event(
-                    "thinking", {"content": block.content}, agent_id=self.agent_id
-                )
+                thinking.append(block.content)
             elif isinstance(block, TextBlock):
                 content_parts.append(block.text)
             elif isinstance(block, ToolCall):
@@ -114,6 +119,17 @@ class TrajectoryRecorder(AgentLoggerBase):
                     }
                 )
 
+        # Tokens were spent either way; only the events are left out.
+        self.trajectory.token_totals.add(usage.input, usage.reasoning, usage.answer)
+        if self.on_tokens:
+            self.on_tokens(usage.input, usage.reasoning + usage.answer)
+        if self.skip_continued_turns and not tool_calls and turn < max_turns:
+            return
+
+        for content in thinking:
+            self.trajectory.add_event(
+                "thinking", {"content": content}, agent_id=self.agent_id
+            )
         self.trajectory.add_event(
             "model_response",
             {
@@ -140,10 +156,6 @@ class TrajectoryRecorder(AgentLoggerBase):
         )
         for tc in tool_calls:
             self.trajectory.add_event("tool_call", tc, agent_id=self.agent_id)
-
-        self.trajectory.token_totals.add(usage.input, usage.reasoning, usage.answer)
-        if self.on_tokens:
-            self.on_tokens(usage.input, usage.reasoning + usage.answer)
 
     def tool_result(self, tool_message: ToolMessage) -> None:
         duration = None

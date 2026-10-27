@@ -146,8 +146,15 @@ class SingleAgentOrchestrator:
         on_tokens: TokenCallback | None = None,
     ) -> dict[str, Any]:
         agent_id = self.config.agent.role or "agent-0"
+        # After a turn with no tool call, upstream appends a "Please continue
+        # the task" user turn without calling any logger hook, so the export
+        # would show two assistant turns back to back. Both are left out; the
+        # record picks up at the turn the nudge produced.
         recorder = TrajectoryRecorder(
-            trajectory, agent_id=agent_id, on_tokens=on_tokens
+            trajectory,
+            agent_id=agent_id,
+            on_tokens=on_tokens,
+            skip_continued_turns=True,
         )
 
         from agent_tracer.environments import build_provider
@@ -311,13 +318,6 @@ class SingleAgentOrchestrator:
             # Always disabled: injected "turns remaining" user turns are synthetic
             # harness text that must never appear in exported training data.
             turns_remaining_warning_threshold=0,
-            # Also disabled: after a turn with no tool call, upstream appends a
-            # "Please continue the task" user turn without calling any logger
-            # hook. The model sees it, the trajectory does not, and the export
-            # shows two assistant turns the model never saw back to back.
-            # Without it the model is simply called again on its own last turn,
-            # which is exactly what gets recorded.
-            block_successive_assistant_messages=False,
             logger=recorder,
         )
 

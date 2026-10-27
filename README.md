@@ -35,8 +35,9 @@ cannot name a sandbox that does not exist yet.
 
 One model turn emits a sequence of blocks — reasoning, text, tool calls — and
 the recorder writes each of them as a trajectory event. A turn that calls no
-tool does not end the run: the loop appends the message and calls the model
-again, with no synthetic user turn in between. It ends on a `submit` that succeeded, or when `max_turns` runs out and
+tool does not end the run: the loop appends the message and asks the model to
+continue. Neither that turn nor the request to continue is recorded; the
+trajectory picks up at the next model turn. It ends on a `submit` that succeeded, or when `max_turns` runs out and
 the trajectory is closed with `exit_status: max_turns`.
 
 Both diagrams are pages of `resource/agent-tracer.drawio`, which the PNGs

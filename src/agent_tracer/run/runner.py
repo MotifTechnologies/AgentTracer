@@ -8,6 +8,7 @@ logger); this progress line is the only thing the runner shows.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import time
 from collections import Counter
@@ -79,6 +80,7 @@ class _TokenCounter:
 class Runner:
     def __init__(self, config: RunConfig):
         self.config = config
+        self.dataset = get_dataset(config.dataset.name, config.dataset.path)
         self.manifests = (
             {}
             if config.dataset.name == "bfcl_fixture"
@@ -118,10 +120,10 @@ class Runner:
             )
         data_path = config.dataset.path
         assert data_path is not None
+        with data_path.open("rb") as source:
+            dataset_sha256 = hashlib.file_digest(source, "sha256").hexdigest()
         manifest = {
-            "dataset_sha256": __import__("hashlib")
-            .sha256(data_path.read_bytes())
-            .hexdigest(),
+            "dataset_sha256": dataset_sha256,
             "model_config_sha256": digest(config.model.model_dump(exclude={"api_key"})),
             "agent": config.agent.model_dump(),
             "runner": config.runner.model_dump(),
@@ -148,6 +150,7 @@ class Runner:
                 )
             with path.open("x", encoding="utf-8") as out:
                 json.dump(manifest, out, indent=2)
+        done = self._completed_samples()
         for journal in (config.output.path / "requests").glob("*.jsonl"):
             pending = set()
             with journal.open(encoding="utf-8") as source:
@@ -170,7 +173,7 @@ class Runner:
                 )
             stem = journal.name.removesuffix(".jsonl")
             task_id, sample_text = stem.rsplit(".s", 1)
-            if (task_id, int(sample_text)) not in self._completed_samples():
+            if (task_id, int(sample_text)) not in done:
                 raise ConfigError(
                     "existing API journal without terminal sample result; recover saved responses offline, never repeat paid calls blindly"
                 )
@@ -235,13 +238,10 @@ class Runner:
                     ),
                     timeout=self.config.runner.task_timeout,
                 )
-                dataset = get_dataset(
-                    self.config.dataset.name, self.config.dataset.path
-                )
-                if isinstance(dataset, BFCLFixtureDataset):
-                    evaluation = dataset.evaluate_trajectory(task, trajectory)
+                if isinstance(self.dataset, BFCLFixtureDataset):
+                    evaluation = self.dataset.evaluate_trajectory(task, trajectory)
                 else:
-                    evaluation = dataset.evaluate(task, result["submission"])
+                    evaluation = self.dataset.evaluate(task, result["submission"])
                 trajectory.finish(
                     {
                         "submission": result["submission"],
@@ -334,8 +334,7 @@ class Runner:
         return await self._run_batch()
 
     async def _run_batch(self) -> list[dict[str, Any]]:
-        dataset = get_dataset(self.config.dataset.name, self.config.dataset.path)
-        tasks = dataset.load(self.config.dataset.split, self.config.dataset.limit)
+        tasks = self.dataset.load(self.config.dataset.split, self.config.dataset.limit)
 
         samples = self.config.runner.samples_per_task
         done = self._completed_samples()

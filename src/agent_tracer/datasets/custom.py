@@ -5,11 +5,11 @@ Line schema: {"task_id": str, "input": str, "reference"?: str, "metadata"?: dict
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from agent_tracer.config.schema import ConfigError
 from agent_tracer.core.task import EvalResult, Task
+from agent_tracer.datasets.jsonl import iter_jsonl_rows
 
 
 class CustomDataset:
@@ -19,18 +19,8 @@ class CustomDataset:
         self.path = path
 
     def load(self, split: str = "test", limit: int | None = None) -> list[Task]:
-        if not self.path.is_file():
-            raise ConfigError(f"dataset: {self.path} not found")
         tasks: list[Task] = []
-        for lineno, line in enumerate(self.path.read_text("utf-8").splitlines(), 1):
-            if not line.strip():
-                continue
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError as e:
-                raise ConfigError(
-                    f"dataset: {self.path}:{lineno} invalid JSON: {e}"
-                ) from e
+        for lineno, row in iter_jsonl_rows(self.path):
             if "task_id" not in row or "input" not in row:
                 raise ConfigError(
                     f"dataset: {self.path}:{lineno} requires task_id and input"

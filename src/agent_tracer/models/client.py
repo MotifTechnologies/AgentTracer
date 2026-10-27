@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from openai import BadRequestError
 from stirrup import (
@@ -31,6 +31,9 @@ from stirrup import (
 )
 from stirrup.clients import ChatCompletionsClient
 from stirrup.clients.utils import to_openai_messages, to_openai_tools
+
+if TYPE_CHECKING:
+    from agent_tracer.config.schema import ModelConfig
 
 # Sentinel for models that emit no reasoning channel at all.
 NO_REASONING = "none"
@@ -177,3 +180,20 @@ class ReasoningKeyChatClient(ChatCompletionsClient):
 
     async def close(self) -> None:
         await self._client.close()
+
+
+def build_client(model: ModelConfig) -> ReasoningKeyChatClient:
+    """The one place a ``ModelConfig`` becomes a client, so fields cannot drift."""
+    return ReasoningKeyChatClient(
+        model.model_name,
+        model.max_tokens,
+        context_window_tokens=model.context_window_tokens,
+        base_url=model.base_url,
+        api_key=model.resolved_api_key(),
+        reasoning_key=model.reasoning_key,
+        send_max_tokens=model.send_max_tokens,
+        reasoning_effort=model.reasoning_effort,
+        timeout=model.timeout,
+        max_retries=model.max_retries,
+        kwargs=model.extra_kwargs,
+    )

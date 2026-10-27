@@ -61,10 +61,7 @@ def _conversations(traj: dict[str, Any]) -> list[dict[str, Any]]:
     pending_thinking: list[str] = []
     for event in traj["events"]:
         etype, data = event["event_type"], event["data"]
-        if etype == "task":
-            content = data.get("content")
-            messages.append(_message("user", content=_to_text(content)))
-        elif etype == "user_message":
+        if etype in ("task", "user_message"):
             messages.append(_message("user", content=_to_text(data.get("content"))))
         elif etype == "thinking":
             pending_thinking.append(data["content"])

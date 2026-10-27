@@ -15,11 +15,12 @@ from pathlib import Path
 from typing import Any, Literal
 
 from jsonschema import Draft202012Validator, FormatChecker
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, ValidationError, model_validator
 from referencing import Registry
 
-from agent_tracer.config.schema import ConfigError
+from agent_tracer.config.schema import ConfigError, StrictModel
 from agent_tracer.core.task import EvalResult, Task
+from agent_tracer.datasets.jsonl import iter_jsonl_rows
 
 
 def digest(value: Any) -> str:
@@ -28,11 +29,7 @@ def digest(value: Any) -> str:
     ).hexdigest()
 
 
-class Strict(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-
-class Operation(Strict):
+class Operation(StrictModel):
     kind: Literal["get", "query", "update", "create", "delete", "calculate"]
     collection: str = ""
     key_argument: str = "id"
@@ -62,7 +59,7 @@ def check_self_contained_schema(value: Any) -> None:
             check_self_contained_schema(child)
 
 
-class FixtureTool(Strict):
+class FixtureTool(StrictModel):
     schema_: dict[str, Any] = Field(alias="schema")
     operation: Operation
 
@@ -81,7 +78,7 @@ class FixtureTool(Strict):
         return self
 
 
-class UserTurn(Strict):
+class UserTurn(StrictModel):
     content: str
     expected_state: dict[str, Any]
     answer_contains: list[str] = Field(default_factory=list)
@@ -91,7 +88,7 @@ class UserTurn(Strict):
     min_parallel_calls: int = 0
 
 
-class Fixture(Strict):
+class Fixture(StrictModel):
     task_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
     category: str
     system_prompt: str | None = None
@@ -112,6 +109,10 @@ class Fixture(Strict):
             ):
                 raise ValueError("invalid turn goal")
         return self
+
+
+def _written_values(op: Operation, arguments: dict[str, Any]) -> dict[str, Any]:
+    return {field: copy.deepcopy(arguments[arg]) for arg, field in op.writes.items()}
 
 
 class FixtureBackend:
@@ -165,17 +166,10 @@ class FixtureBackend:
         if op.kind == "create":
             if key in records:
                 raise ValueError("record already exists")
-            records[key] = {
-                field: copy.deepcopy(arguments[arg]) for arg, field in op.writes.items()
-            }
+            records[key] = _written_values(op, arguments)
         else:
-            row = records[key]
-            row.update(
-                {
-                    field: copy.deepcopy(arguments[arg])
-                    for arg, field in op.writes.items()
-                }
-            )
+            # Resolve the record before write arguments, preserving tool errors.
+            records[key].update(_written_values(op, arguments))
         return copy.deepcopy(records[key])
 
 
@@ -212,23 +206,27 @@ class BFCLFixtureDataset:
     def load(self, split: str = "test", limit: int | None = None) -> list[Task]:
         tasks = []
         seen = set()
-        with self.path.open(encoding="utf-8") as source:
-            for line in source:
-                if not line.strip():
-                    continue
-                fixture = Fixture.model_validate_json(line)
-                if fixture.task_id in seen:
-                    raise ConfigError("duplicate fixture task identity")
-                seen.add(fixture.task_id)
-                tasks.append(
-                    Task(
-                        fixture.task_id,
-                        fixture.user_turns[0].content,
-                        metadata={"bfcl_fixture": fixture.model_dump(by_alias=True)},
-                    )
+        for lineno, row in iter_jsonl_rows(self.path):
+            try:
+                fixture = Fixture.model_validate(row)
+            except ValidationError as exc:
+                raise ConfigError(
+                    f"dataset: {self.path}:{lineno} invalid fixture: {exc}"
+                ) from exc
+            if fixture.task_id in seen:
+                raise ConfigError(
+                    f"dataset: {self.path}:{lineno} duplicate fixture task identity"
                 )
-                if limit is not None and len(tasks) >= limit:
-                    break
+            seen.add(fixture.task_id)
+            tasks.append(
+                Task(
+                    fixture.task_id,
+                    fixture.user_turns[0].content,
+                    metadata={"bfcl_fixture": fixture.model_dump(by_alias=True)},
+                )
+            )
+            if limit is not None and len(tasks) >= limit:
+                break
         return tasks
 
     def evaluate(self, task: Task, submission: str | None) -> EvalResult:

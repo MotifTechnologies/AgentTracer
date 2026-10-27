@@ -311,6 +311,13 @@ class SingleAgentOrchestrator:
             # Always disabled: injected "turns remaining" user turns are synthetic
             # harness text that must never appear in exported training data.
             turns_remaining_warning_threshold=0,
+            # Also disabled: after a turn with no tool call, upstream appends a
+            # "Please continue the task" user turn without calling any logger
+            # hook. The model sees it, the trajectory does not, and the export
+            # shows two assistant turns the model never saw back to back.
+            # Without it the model is simply called again on its own last turn,
+            # which is exactly what gets recorded.
+            block_successive_assistant_messages=False,
             logger=recorder,
         )
 

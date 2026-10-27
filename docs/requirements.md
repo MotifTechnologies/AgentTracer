@@ -24,7 +24,7 @@ datasets — without depending on any single model vendor's API.
 | FR-ENG-1 | Run a plan → act → observe loop per task with a configurable turn ceiling (`agent.max_turns`); exhausting it closes the trajectory as `max_turns`, never as a success. | `orchestrators/single.py` |
 | FR-ENG-2 | A task finishes only through an explicit `submit` tool call; the submission is recorded as its own event. | `orchestrators/single.py` |
 | FR-ENG-3 | Tasks run concurrently up to `runner.max_concurrency`, each in an isolated session (client, tools, recorder per task). | `run/runner.py`, `orchestrators/single.py` |
-| FR-ENG-4 | Harness-injected turns must never be mistakable for user text in exported data: turn-remaining warnings are disabled, and injected turns are tagged with their own event types. | `orchestrators/single.py`, `recording/recorder.py` |
+| FR-ENG-4 | Harness-injected turns must never be mistakable for user text in exported data: turn-remaining warnings and the "Please continue the task" turn after a tool-less turn are disabled, and injected turns are tagged with their own event types. | `orchestrators/single.py`, `recording/recorder.py` |
 
 ## 3. Tool execution and sandboxing (Tool Executor)
 

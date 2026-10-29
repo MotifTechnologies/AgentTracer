@@ -2,8 +2,6 @@
 # A pull request lands in the first section whose label it carries.
 changelog:
   categories:
-    - title: Security
-      labels: [security]
     - title: Bug fixes
       labels: [bug]
     - title: Features and improvements

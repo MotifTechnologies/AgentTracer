@@ -35,8 +35,8 @@ documentation improvements can go directly to a pull request. See
 | Bug or security vulnerability | Within 3 working days |
 | Feature request or question | Within 5 working days |
 
-Maintainers label new issues on arrival: `bug`, `enhancement`, `question`,
-`good first issue` or `security`. The issue templates apply the first two.
+Maintainers label new issues on arrival: `bug`, `enhancement`, `question` or
+`good first issue`. The issue templates apply the first two.
 Pull requests get the same labels before they merge, because release notes are
 grouped by them (see `.github/release.yml`).
 New contributors can start from issues labelled

@@ -26,9 +26,12 @@ from pathlib import Path
 args = sys.argv[1:]
 scenario = json.loads(Path(os.environ['SCENARIO_FILE']).read_text())
 with open(os.environ['CALLS_FILE'], 'a') as log:
-    log.write(json.dumps(args) + '\\n')
+    log.write(json.dumps({'args': args, 'token': os.environ['GH_TOKEN']}) + '\\n')
 if args[:2] == ['pr', 'list']:
     print('41')
+elif args[:2] == ['pr', 'merge']:
+    assert '--auto' in args
+    assert '--match-head-commit' in args
 elif args[:2] == ['pr', 'checks']:
     assert '--required' in args
     sys.exit(scenario['checks_exit'])
@@ -68,6 +71,63 @@ def test_reconciliation_required_checks(
     enqueue_exit: int,
     expected_calls: list[str],
 ) -> None:
+    pr = _pr(reviewDecision=review, mergeStateStatus=merge_state)
+    result, calls = _run(tmp_path, event, pr, checks_exit, enqueue_exit)
+    checks_and_enqueues = []
+    for call in calls:
+        if call["args"][:2] == ["pr", "checks"]:
+            checks_and_enqueues.append("checks")
+        elif any("enqueuePullRequest" in arg for arg in call["args"]):
+            checks_and_enqueues.append("enqueue")
+            # A queue entry made with GITHUB_TOKEN never gets its merge_group
+            # checks: GitHub starts no workflow for that token's events.
+            assert call["token"] == APP_TOKEN
+        else:
+            assert call["token"] == ACTIONS_TOKEN
+    assert checks_and_enqueues == expected_calls
+    assert result.returncode == enqueue_exit, result.stdout + result.stderr
+
+
+def test_enrollment_enables_auto_merge_as_the_app(tmp_path: Path) -> None:
+    # Native auto-merge enqueues later as whoever enabled it, so enabling
+    # has to be the App too.
+    result, calls = _run(
+        tmp_path, "pull_request_target", _pr(autoMergeRequest=None), pr_number="41"
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    merges = [c for c in calls if c["args"][:2] == ["pr", "merge"]]
+    assert len(merges) == 1
+    assert merges[0]["token"] == APP_TOKEN
+
+
+APP_TOKEN = "app-installation-token"
+ACTIONS_TOKEN = "github-actions-token"
+
+
+def _pr(**overrides: object) -> dict:
+    return {
+        "id": "PR_test",
+        "state": "OPEN",
+        "isDraft": False,
+        "baseRefName": "main",
+        "headRefOid": "a" * 40,
+        "autoMergeRequest": {"enabledAt": "2026-10-19"},
+        "reviewDecision": "APPROVED",
+        "mergeStateStatus": "CLEAN",
+        "isMergeQueueEnabled": True,
+        "mergeQueueEntry": None,
+        **overrides,
+    }
+
+
+def _run(
+    tmp_path: Path,
+    event: str,
+    pr: dict,
+    checks_exit: int = 0,
+    enqueue_exit: int = 0,
+    pr_number: str = "",
+) -> tuple[subprocess.CompletedProcess[str], list[dict]]:
     workflow = (
         Path(__file__).resolve().parents[1] / ".github/workflows/auto-merge.yml"
     ).read_text()
@@ -78,24 +138,7 @@ def test_reconciliation_required_checks(
     script = dedent(body)
     scenario_file = tmp_path / "scenario.json"
     scenario_file.write_text(
-        json.dumps(
-            {
-                "pr": {
-                    "id": "PR_test",
-                    "state": "OPEN",
-                    "isDraft": False,
-                    "baseRefName": "main",
-                    "headRefOid": "a" * 40,
-                    "autoMergeRequest": {"enabledAt": "2026-10-19"},
-                    "reviewDecision": review,
-                    "mergeStateStatus": merge_state,
-                    "isMergeQueueEnabled": True,
-                    "mergeQueueEntry": None,
-                },
-                "checks_exit": checks_exit,
-                "enqueue_exit": enqueue_exit,
-            }
-        )
+        json.dumps({"pr": pr, "checks_exit": checks_exit, "enqueue_exit": enqueue_exit})
     )
     gh = tmp_path / "gh"
     gh.write_text(f"#!{sys.executable}\n{MOCK_GH}")
@@ -108,7 +151,10 @@ def test_reconciliation_required_checks(
             "SCENARIO_FILE": str(scenario_file),
             "CALLS_FILE": str(calls_file),
             "GH_REPO": "example/repo",
+            "GH_TOKEN": ACTIONS_TOKEN,
+            "APP_TOKEN": APP_TOKEN,
             "EVENT_NAME": event,
+            "PR_NUMBER": pr_number,
         },
         capture_output=True,
         text=True,
@@ -116,11 +162,4 @@ def test_reconciliation_required_checks(
         check=False,
     )
     calls = [json.loads(line) for line in calls_file.read_text().splitlines()]
-    checks_and_enqueues = []
-    for call in calls:
-        if call[:2] == ["pr", "checks"]:
-            checks_and_enqueues.append("checks")
-        elif any("enqueuePullRequest" in arg for arg in call):
-            checks_and_enqueues.append("enqueue")
-    assert checks_and_enqueues == expected_calls
-    assert result.returncode == enqueue_exit, result.stdout + result.stderr
+    return result, calls

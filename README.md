@@ -97,7 +97,7 @@ uv run pytest tests/
 
 See the [contributing guide](CONTRIBUTING.md) for setup, issue reporting, the
 pull request workflow, and required checks, and [GOVERNANCE.md](GOVERNANCE.md)
-for roles and how decisions are made. Questions and ideas go to
+for how decisions are made. Questions and ideas go to
 [Discussions](https://github.com/MotifTechnologies/AgentTracer/discussions). All
 participants are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 

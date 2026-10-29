@@ -1,5 +1,11 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Question
+    url: https://github.com/MotifTechnologies/AgentTracer/discussions/categories/q-a
+    about: Ask how to use agent-tracer in Discussions. Confirmed bugs move to issues.
+  - name: Idea or design proposal
+    url: https://github.com/MotifTechnologies/AgentTracer/discussions/categories/ideas
+    about: Discuss an idea first. Major changes are posted here as an RFC.
   - name: Security vulnerability
     url: https://github.com/MotifTechnologies/AgentTracer/blob/main/SECURITY.md
     about: Follow the security policy to report vulnerabilities privately.

@@ -7,6 +7,11 @@ All participants are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md
 
 ## Reporting bugs and proposing changes
 
+Ask usage questions in [Discussions Q&A](https://github.com/MotifTechnologies/AgentTracer/discussions/categories/q-a)
+and share ideas in [Discussions Ideas](https://github.com/MotifTechnologies/AgentTracer/discussions/categories/ideas).
+Issues are for confirmed bugs and agreed work; a discussion that turns out to
+be a bug is moved to an issue.
+
 Search existing issues and pull requests before opening a new one. Use the
 [issue templates](https://github.com/MotifTechnologies/AgentTracer/issues/new/choose)
 for bug reports and feature requests. For a bug, include a minimal
@@ -18,9 +23,24 @@ configuration snippets, logs, and trajectories before sharing them. Report
 security vulnerabilities privately using [SECURITY.md](SECURITY.md), rather
 than through an issue.
 
-For a substantial change, open an issue first so maintainers can discuss the
-scope and approach. Small fixes and documentation improvements can go
-directly to a pull request.
+For a major feature or an architecture change, post an RFC in Discussions Ideas
+first. It stays open for feedback for 7 days before a decision. Small fixes and
+documentation improvements can go directly to a pull request. See
+[GOVERNANCE.md](GOVERNANCE.md) for who decides what.
+
+### Response targets
+
+| Report | First response |
+| --- | --- |
+| Bug or security vulnerability | Within 3 working days |
+| Feature request or question | Within 5 working days |
+
+Maintainers label new issues on arrival: `bug`, `enhancement`, `question` or
+`good first issue`. The issue templates apply the first two.
+Pull requests get the same labels before they merge, because release notes are
+grouped by them (see `.github/release.yml`).
+New contributors can start from issues labelled
+[`good first issue`](https://github.com/MotifTechnologies/AgentTracer/labels/good%20first%20issue).
 
 ## Getting set up
 

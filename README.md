@@ -96,8 +96,10 @@ uv run pytest tests/
 ## Contributing
 
 See the [contributing guide](CONTRIBUTING.md) for setup, issue reporting, the
-pull request workflow, and required checks. All participants are expected to
-follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+pull request workflow, and required checks, and [GOVERNANCE.md](GOVERNANCE.md)
+for how decisions are made. Questions and ideas go to
+[Discussions](https://github.com/MotifTechnologies/AgentTracer/discussions). All
+participants are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 Use the [issue templates](https://github.com/MotifTechnologies/AgentTracer/issues/new/choose)
 to report a bug or request a feature. For vulnerabilities, follow the private

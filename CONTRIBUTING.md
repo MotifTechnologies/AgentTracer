@@ -190,6 +190,10 @@ queue. A scheduled reconciliation runs every ten minutes as a fallback (GitHub
 may delay scheduled runs), and maintainers can run **Auto-merge** manually from
 Actions. Reconciliation preserves manually disabled auto-merge and skips drafts,
 unapproved PRs, pending or failed required checks, and entries already queued.
+The automation enables auto-merge and enqueues as the repository's auto-merge
+GitHub App (`AUTO_MERGE_APP_ID`, `AUTO_MERGE_APP_PRIVATE_KEY`), not as
+`GITHUB_TOKEN`: GitHub starts no workflow for an event that token causes, so a
+queue entry it created would never get its `merge_group` checks.
 
 The queue tests a temporary commit containing the PR, current `main`, and any
 earlier queued changes. All nine checks run again on `merge_group` events; the

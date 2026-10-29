@@ -21,7 +21,7 @@ the model's reasoning, responses, and tool calls as structured events.
 
 ## How it works
 
-![One task, end to end](resource/agent-tracer-overall.png)
+![One task, end to end](resource/agent-tracer-overall.svg)
 
 A task gets its own sandbox, and two things reach into it. `code_exec` runs
 inside it. The sandbox-bound MCP servers — `filesystem`, `sqlite`, `pdf`,
@@ -31,7 +31,7 @@ for the life of the agent. Which sandbox is this task's reaches them as
 `AGENT_TRACER_*` environment variables: a manifest is read once at startup and
 cannot name a sandbox that does not exist yet.
 
-![The reasoning loop](resource/agent-tracer-loop.png)
+![The reasoning loop](resource/agent-tracer-loop.svg)
 
 One model turn emits a sequence of blocks — reasoning, text, tool calls — and
 the recorder writes each of them as a trajectory event. A turn that calls no
@@ -40,8 +40,8 @@ continue. Neither that turn nor the request to continue is recorded; the
 trajectory picks up at the next model turn. It ends on a `submit` that succeeded, or when `max_turns` runs out and
 the trajectory is closed with `exit_status: max_turns`.
 
-Both diagrams are pages of `resource/agent-tracer.drawio`, which the PNGs
-beside it are exported from.
+Both diagrams are pages of `resource/agent-tracer.drawio`, with English SVG renderings
+beside it for the README.
 
 The trajectory file format the recorder writes — envelope, the twelve event
 types and their payloads, and how the exporters read them — is specified in

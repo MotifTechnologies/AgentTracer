@@ -1,113 +1,112 @@
-# 오픈소스 관리 RACI
+# Open-source management RACI
 
-문서 ID: OSS-RACI-001 · 버전: 1.4 · 작성일: 2026-10-14 · 수정일: 2026-10-16
+Document ID: OSS-RACI-001 · Version: 1.4 · Created: 2026-10-14 · Updated: 2026-10-16
 
-적용 범위: `MotifTechnologies/motif-agent-tracer-v2`의 OSS 관리 업무.
-운영 방식: **PR별 담당·승인자 지정**, 2026-10-14 사용자 선택 반영.
-본 문서의 검토·채택 기록은 [문서 PR #34](https://github.com/MotifTechnologies/motif-agent-tracer-v2/pull/34)에 남긴다.
+Scope: OSS management activities in `MotifTechnologies/motif-agent-tracer-v2`.
+Operating model: **assign a responsible person and approver per PR**, reflecting the user's choice on 2026-10-14.
+Record review and adoption of this document in [documentation PR #34](https://github.com/MotifTechnologies/motif-agent-tracer-v2/pull/34).
 
-## 역할 정의
+## Role definitions
 
-| 구분 | 의미 | 이 저장소에서의 지정 방법 | 책임 |
+| Role | Meaning | Assignment in this repository | Responsibilities |
 | --- | --- | --- | --- |
-| **R — Responsible** | 실무 수행 | 해당 PR 작성자 또는 PR·연결 이슈에 명시한 업무 담당자 | 조사·구현·문서 작성, 검사 실행 및 결과·후속 조치 기록 |
-| **A — Accountable** | 해당 건의 최종 책임·승인 | R 및 변경 작성자와 다른 CODEOWNER **1명** | 검토 범위와 결과 확인, 승인·보완·반려 판단, 미해결 사항과 완료 여부 확인 |
-| **C — Consulted** | 결정 전 협의 | 업무별로 필요한 기능·배포 담당자 또는 다른 CODEOWNER | 영향·조건·대안에 대한 의견 제공 |
-| **I — Informed** | 결정·결과 공유 | 변경을 사용하거나 운영하는 관련 기여자 | 결과와 적용 사항 전달 대상 |
+| **R — Responsible** | Performs the work | PR author or person named in the PR or linked issue | Research, implementation, documentation, checks, and records of results and follow-up actions |
+| **A — Accountable** | Final responsibility and approval for the activity | **One** CODEOWNER who is distinct from R and the change author | Check scope and results, approve or request changes or reject, and verify open items and completion |
+| **C — Consulted** | Consulted before a decision | Relevant feature/distribution owner or another CODEOWNER | Provide input on impact, conditions, and alternatives |
+| **I — Informed** | Receives decisions and results | Contributors who use or operate the change | Receive results and applicable changes |
 
-현재 CODEOWNER는 `@junhyeok-motech`, `@gihuncho`이다.
-각 PR에서 수행 담당자와 CODEOWNER 승인자 한 명을 지정한다.
-기존 지정 근거는 [CODEOWNERS](../.github/CODEOWNERS)와
-[PR #10](https://github.com/MotifTechnologies/motif-agent-tracer-v2/pull/10)이며 **Git 관리 완료**로 인정한다.
+Current CODEOWNERs: `@junhyeok-motech` and `@gihuncho`.
+Assign a responsible person and one CODEOWNER approver for each PR.
+The existing assignment evidence is [CODEOWNERS](../.github/CODEOWNERS) and
+[PR #10](https://github.com/MotifTechnologies/motif-agent-tracer-v2/pull/10), considered **complete under Git-based record management**.
 
-- A는 업무 건마다 한 명을 명시한다.
-- R과 A는 서로 다른 담당자로 지정한다. CODEOWNER 모두가 수행에 참여한 건은 독립 검토자를 지정한다.
-- C/I가 필요하지 않은 건은 `해당 없음`으로 기록한다.
-- Dependabot·CI·Codex 등을 사용하는 업무의 R은 실제 담당자로 지정한다.
-- A는 본 저장소의 해당 업무를 최종 승인한다.
+- Name one A for each activity.
+- Assign different people to R and A. If both CODEOWNERs performed the work, appoint an independent reviewer.
+- Record `Not applicable` when C or I is not needed.
+- Assign a real person as R for activities using Dependabot, CI, Codex, or similar tools.
+- A gives final approval for the activity within this repository.
 
-## 업무별 책임표
+## Responsibility matrix
 
-아래 역할에 해당하는 실제 계정은 건별 PR 또는 연결 이슈에 기재한다.
-`지정 CODEOWNER`는 위 기준에 따라 해당 건의 A로 선택된 한 명이다.
+Record actual accounts for these roles in each PR or linked issue.
+`Assigned CODEOWNER` means the one person selected as A under the rules above.
 
-| ID | 업무 | R — 수행 | A — 최종 책임·승인 | C — 사전 협의 | I — 결과 공유 | 완료 증빙 |
+| ID | Activity | R — Responsible | A — Accountable | C — Consulted | I — Informed | Completion evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| RACI-01 | OSS 후보 검토·도입 또는 제외 | 도입 제안 PR 담당자 | 지정 CODEOWNER | 해당 OSS 사용 기능 담당자 | 영향을 받는 개발·운영 담당자 | 대상·버전·사용 목적·검토 근거·판정과 승인 PR |
-| RACI-02 | 라이선스 원문·배포 조건·개별 검토 | 해당 의존성 PR 담당자 | 지정 CODEOWNER | 해당 배포 담당자; 해석 검토가 필요하면 적격 검토자 | 해당 OSS 사용·배포 담당자 | 원문·버전·해시, 조건 검토 문서, 승인 리뷰 |
-| RACI-03 | 허용·선정 제외 정책 변경 | 정책 변경 PR 담당자 | 지정 CODEOWNER | 영향을 받는 기능 담당자, CI 담당자 | 저장소 기여자 | 정책 문서·코드·테스트 변경과 승인 PR |
-| RACI-04 | 의존성·lock 갱신 및 SBOM 확인 | 의존성 변경 PR 담당자; 봇 PR은 지정된 사람 | 지정 CODEOWNER | 해당 MCP·기능 담당자 | 배포·운영 담당자 | lock 변경, 동일 대상 커밋의 SBOM·검사 결과 |
-| RACI-05 | 취약점 영향 확인·수정·종결 | 취약점 조치 PR 또는 이슈 담당자 | 지정 CODEOWNER | 영향 기능·배포 담당자 | 영향받는 사용·운영 담당자 | 취약점 식별자·영향 버전·수정 커밋·재스캔·종결 판단 |
-| RACI-06 | 취약점 예외 수용·재검토·해제 | 예외 변경 PR 담당자 | 지정 CODEOWNER | 영향 기능·배포 담당자; 필요한 보안 검토자 | 해당 예외를 적용하는 개발·운영 담당자 | 수용 사유·재검토 조건·예외 목록 diff·승인 PR |
-| RACI-07 | 배포 고지·라이선스 동봉 확인 | 해당 배포 건의 담당자 | 지정 CODEOWNER | 의존성·고지 변경 담당자 | 배포·운영 담당자 | 실제 배포물의 NOTICE/LICENSE·제3자 고지 확인 결과 |
-| RACI-08 | 주간 자동 검사 결과 검토 | 점검 이슈 또는 기록 PR에 지정된 사람 | 지정 CODEOWNER | 실패 항목의 기능 담당자 | 조치 담당자 및 관련 운영 담당자 | scheduled run, 사람의 결과 검토, 발견 사항과 후속 PR |
-| RACI-09 | CI 증빙 만료 전 보존 | 증빙 보존 이슈 또는 기록 PR 담당자 | 지정 CODEOWNER | 해당 릴리스·검사 담당자 | 증빙 검토자 및 관련 기여자 | 보존 대상 커밋·실행·해시·저장 위치·복사 확인 기록 |
-| RACI-10 | 담당 변경·인수인계 | 인수인계 기록 PR 담당자 | 지정 CODEOWNER | 전임·후임 담당자 | 해당 업무의 관련 기여자 | 책임 변경, 미해결 건·기한·증빙 위치의 인계 확인 |
+| RACI-01 | Review, adopt, or exclude OSS candidates | Owner of the adoption proposal PR | Assigned CODEOWNER | Owner of the feature using the OSS | Affected development and operations owners | Component, version, purpose, review evidence, decision, and approved PR |
+| RACI-02 | Review license texts, distribution terms, and individual cases | Owner of the dependency PR | Assigned CODEOWNER | Relevant distribution owner; qualified reviewer if interpretation is needed | Owners using or distributing the OSS | Texts, version, hashes, terms review, and approval review |
+| RACI-03 | Change acceptance and selection exclusion policies | Owner of the policy PR | Assigned CODEOWNER | Affected feature owners and CI owner | Repository contributors | Policy documents, code, tests, and approved PR |
+| RACI-04 | Update dependencies and locks; verify SBOMs | Owner of the dependency PR; a designated person for bot PRs | Assigned CODEOWNER | Relevant MCP/feature owner | Distribution and operations owners | Lock diff, SBOM, and check results for the same target commit |
+| RACI-05 | Assess, fix, and close vulnerabilities | Owner of the remediation PR or issue | Assigned CODEOWNER | Affected feature/distribution owners | Affected users and operations owners | Advisory ID, affected version, fix commit, repeat scan, and closure decision |
+| RACI-06 | Accept, reassess, or remove vulnerability exceptions | Owner of the exception PR | Assigned CODEOWNER | Affected feature/distribution owners; security reviewer as needed | Development and operations owners applying the exception | Acceptance reason, reassessment conditions, exception-list diff, and approved PR |
+| RACI-07 | Verify distribution notices and bundled licenses | Owner of the distribution | Assigned CODEOWNER | Owners of dependency and notice changes | Distribution and operations owners | Verification of NOTICE/LICENSE and third-party notices in the actual distribution |
+| RACI-08 | Review weekly automated checks | Person named in the check issue or record PR | Assigned CODEOWNER | Feature owners for failing items | Remediation and relevant operations owners | Scheduled run, human review, findings, and follow-up PRs |
+| RACI-09 | Preserve CI evidence before expiration | Owner of the preservation issue or record PR | Assigned CODEOWNER | Relevant release/check owner | Evidence reviewers and relevant contributors | Target commit, run, hashes, storage location, and copy verification record |
+| RACI-10 | Change ownership and hand over work | Owner of the handover record PR | Assigned CODEOWNER | Outgoing and incoming owners | Contributors involved in the activity | Responsibility changes and confirmed handover of open items, deadlines, and evidence locations |
 
-## 운영 방법
+## Procedure
 
-1. **착수**: 업무 범위를 정하고 PR 또는 연결 이슈에 R과 A의 계정을 기록한다. 기능별 협의가 필요한 경우 C, 결과를 전달할 대상을 I에 기록한다.
-2. **수행**: R은 표에 해당하는 증빙을 연결한다. C의 의견과 처리 결과는 같은 PR·이슈에 남긴다.
-3. **검토**: A는 증빙과 잔여 조치를 확인해 승인 또는 보완을 결정한다. PR 변경 승인은 GitHub 리뷰로 남긴다.
-4. **완료**: 변경 건은 승인·필수 검사·병합, 운영 점검 건은 결과 검토와 완료 판단을 확인한다. 후속 조치가 남으면 별도 이슈·PR과 담당자를 연결한다.
-5. **공유·보존**: I가 확인할 수 있도록 결과 근거를 연결한다. CI artifact는 만료 전에 필요한 증빙을 보존하고, 문서·승인·조치 이력은 Git/PR을 원본으로 관리한다.
-6. **담당 변경**: 같은 PR·이슈에 후임과 인수인계 내용을 기록한다.
+1. **Start**: Define scope and record R and A accounts in the PR or linked issue. Record C for required consultation and I for recipients of results.
+2. **Perform**: R links the evidence required by the matrix. Keep C's input and its disposition in the same PR or issue.
+3. **Review**: A checks evidence and remaining actions, then approves or requests changes. Record approval of PR changes through a GitHub review.
+4. **Complete**: For changes, verify approval, required checks, and merge. For operational checks, verify review of results and the completion decision. Link remaining actions to separate issues/PRs and owners.
+5. **Share and retain**: Link results where I can access them. Preserve needed CI artifacts before expiration; use Git/PRs as the originals for documents, approvals, and remediation history.
+6. **Hand over**: Record the successor and handover details in the same PR or issue.
 
-정기 검사·증빙 보존 업무는 이슈 또는 문서 PR에 담당자와 검토 결과를 기록한다.
+Record owners and review results for scheduled checks and evidence preservation in an issue or documentation PR.
 
-## PR·이슈에 남길 최소 기록
+## Minimum PR or issue record
 
-기존 PR에서 작성자·승인자·검증 결과가 명확하면 그 기록을 그대로 사용한다.
-추가 지정이 필요할 때는 아래 항목을 보완한다.
+Reuse existing PR records when authors, approvers, and validation results are clear.
+Add the following fields when further assignment is needed.
 
 ```text
-업무 / 범위: RACI-__ / 대상 OSS·버전 또는 운영 점검 범위
-R: @실제-수행-담당자
-A: @작성자와-다른-CODEOWNER-한-명
-C: @협의-담당자 또는 해당 없음
-I: 결과 공유 대상 또는 해당 없음
-증빙: 문서·변경 커밋·검사 실행·산출물 링크
-판정: 진행 중 / 보완 필요 / 완료 (실제 승인·검토 기록 연결)
-후속 조치: 내용·담당자·기한 또는 해당 없음
+Activity / scope: RACI-__ / target OSS and version, or operational check scope
+R: @actual-responsible-person
+A: @one-CODEOWNER-distinct-from-the-author
+C: @consulted-person or Not applicable
+I: result recipients or Not applicable
+Evidence: links to documents, commits, check runs, and artifacts
+Decision: In progress / Changes needed / Complete (link actual approval/review)
+Follow-up: action, owner, and deadline, or Not applicable
 ```
 
-## 기존 기록으로 확인되는 사례
+## Example supported by existing records
 
-[PR #24](https://github.com/MotifTechnologies/motif-agent-tracer-v2/pull/24)는 다음 정보를
-GitHub에서 확인할 수 있다.
+[PR #24](https://github.com/MotifTechnologies/motif-agent-tracer-v2/pull/24) provides the following GitHub records.
 
-| 항목 | 실제 기록 |
+| Item | Actual record |
 | --- | --- |
-| 업무 | SBOM 생성·라이선스 검사·PDF wheel 검토 |
-| 작성자 / R 확인 근거 | `@gihuncho`, PR 작성 및 변경 커밋 |
-| 승인자 / A 확인 근거 | `@junhyeok-motech`, 2026-10-07 01:45:43 UTC 승인 리뷰 |
-| 승인 대상 | `d80e06599fbedef6cb5e9359d256a53c1c783307` |
-| 적용 | 2026-10-07 01:46:16 UTC 병합 |
-| 증빙 | PR의 변경 파일·검증 결과와 연결된 Security 실행 |
+| Activity | SBOM generation, license checks, and PDF wheel review |
+| Author / evidence for R | `@gihuncho`, PR authorship and change commits |
+| Approver / evidence for A | `@junhyeok-motech`, approval review at 2026-10-07 01:45:43 UTC |
+| Reviewed commit | `d80e06599fbedef6cb5e9359d256a53c1c783307` |
+| Applied | Merged at 2026-10-07 01:46:16 UTC |
+| Evidence | Changed files, validation results, and linked Security runs in the PR |
 
-위 사례의 작성·승인·적용 이력은 **Git 관리 완료**이다.
+Authorship, approval, and application history for this example are **complete under Git-based record management**.
 
-## 문서 검수 결과
+## Document review results
 
-확인일: 2026-10-16 · 내용 대조: Codex.
-이 문서의 규칙·책임표·근거를 확인했다.
+Checked: 2026-10-16 · Content cross-check: Codex.
+The document's rules, responsibility matrix, and evidence were checked.
 
-- [x] 사용자가 선택한 PR별 담당·승인자 지정 방식이 반영되어 있다.
-- [x] CODEOWNERS의 두 계정과 일치하며, A 한 명 지정 및 R·작성자와의 분리 기준이 명시되어 있다.
-- [x] 봇 PR·정기 점검에도 사람을 담당자로 지정하도록 규정되어 있다.
-- [x] C/I 지정 기준과 `해당 없음` 처리 방법이 명시되어 있다.
-- [x] 10개 업무의 R/A/C/I와 완료 증빙, 후속 조치·보존·인수인계 기준이 정리되어 있다.
-- [x] PR #24의 작성자·승인자·승인 커밋·승인 및 병합 일자를 실제 GitHub 기록과 대조했다.
+- [x] Reflects the user's choice of per-PR responsible persons and approvers.
+- [x] Matches the two CODEOWNERS accounts and specifies one A, distinct from R and the change author.
+- [x] Requires a real person to own bot PRs and scheduled checks.
+- [x] Defines C/I assignment and how to record `Not applicable`.
+- [x] Covers R/A/C/I and completion evidence for ten activities, plus follow-up, retention, and handover criteria.
+- [x] Compared PR #24's author, approver, reviewed commit, approval time, and merge time with actual GitHub records.
 
-## 개별 업무에 적용할 확인 기준
+## Checks for each activity
 
-다음 기준에 따라 확인한 결과를 해당 PR·이슈에 기록한다.
+Record the results of these checks in the corresponding PR or issue.
 
-| 확인 대상 | 해당 PR·이슈에서 확인할 근거 |
+| Check | Evidence in the PR or issue |
 | --- | --- |
-| 담당·승인자 | 실제 R과 A 계정, A 한 명 지정, R·변경 작성자와의 분리 |
-| 자동화가 수행한 업무 | 봇 PR·정기 점검 결과를 담당하는 실제 사람 |
-| 협의·공유 대상 | 필요한 C/I 계정 또는 해당 없음의 명시 |
-| 업무 완료 | 해당 업무의 증빙 및 실제 승인·검토 기록 |
-| 남은 조치 | 미해결 조치의 담당자·기한·후속 링크 |
-| 장기 증빙 보존 | 별도 보존이 필요한 경우의 담당자·저장 위치·복사 완료 기록 |
+| Responsible person and approver | Actual R and A accounts, one A, distinct from R and the change author |
+| Automated work | The real person responsible for bot PRs or scheduled check results |
+| Consultation and sharing | Required C/I accounts or explicit `Not applicable` |
+| Completion | Evidence for the activity and actual approval/review records |
+| Remaining actions | Owners, deadlines, and follow-up links for open actions |
+| Long-term evidence retention | Owner, storage location, and completed-copy record when separate preservation is needed |

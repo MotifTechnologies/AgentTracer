@@ -162,7 +162,7 @@ See [the SBOM workflow](docs/sbom.md) for scope, artifacts and limitations.
 For packaged MCP servers, inline PEP 723 dependencies have independent
 `server.py.lock` files. Regenerate and commit the affected script lock after a
 dependency edit; updating only the root `uv.lock` does not update these environments.
-The [MCP development guide](src/agent_tracer/mcp_servers/README.md#의존성-고정과-sbom) describes
+The [MCP development guide](src/agent_tracer/mcp_servers/README.md#dependency-locks-and-sboms) describes
 the server layout; [SBOM maintenance](docs/sbom.md#changing-dependencies-and-review-evidence)
 lists the commands and review procedure. An unrecognised license is resolved by
 reviewing its actual evidence, not by adding a blanket ignore. The reviewed

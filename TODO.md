@@ -1,45 +1,47 @@
 # TODO
 
-## 배포용 ShareGPT 직렬화가 exporter 명세와 다르다
+## Distributed ShareGPT serialization differs from the exporter specification
 
-`datasample/sft_all.jsonl`(1,023행, HF 업로드 준비본)과 `dump.json`은 현행
-exporter 산출물이 아니라 **역할별 키셋**으로 직렬화되어 있다:
+`datasample/sft_all.jsonl` (1,023 rows, prepared for HF upload) and `dump.json`
+use **role-specific key sets**, rather than the current exporter's output:
 
 - system/user: `role, content`
-- assistant: `role, content, tool_calls` + `thinking`(reasoning이 있던 턴에만,
-  703턴 중 679턴). 툴콜만 있는 턴의 `content: null`은 유지된다
+- assistant: `role, content, tool_calls`, plus `thinking` only on turns with
+  reasoning (679 of 703 turns). Tool-call-only turns retain `content: null`.
 - tool: `role, content, tool_call_id`
 
-반면 exporter 명세(`export/sharegpt.py`의 `_MESSAGE_KEYS`)는 "모든 턴이 5키
-(role/content/tool_calls/thinking/tool_call_id)를 null로라도 균일하게 갖는다"
-이다. null을 일괄 제거한 것도 아니고(assistant의 `content: null`이 살아 있다),
-학습기가 받는 chat-template 형태로 맞춘 별도 변환본으로 보인다.
+The exporter specification (`_MESSAGE_KEYS` in `export/sharegpt.py`) instead
+requires all five keys (`role/content/tool_calls/thinking/tool_call_id`) on every
+turn, including null values. This is not blanket null removal: assistant
+`content: null` remains. It appears to be a separate conversion into the chat
+template format expected by the trainer.
 
-- [ ] 이 형식이 어디서 만들어졌는지 확인한다(변환 스크립트의 소재)
-- [ ] 정합 방향을 결정한다:
-      (a) 역할별 형식을 exporter의 공식 출력 모드로 추가하고 docs에 병기 —
-          변환 과정이 저장소 코드로 증빙된다
-      (b) 균일 5키를 정본으로 유지하고, HF 공개본이 정본 형식으로 나가는지
-          공개 전 단계에서 확인한다
-- [ ] thinking이 없는 assistant 턴(24/703)의 학습 시 처리 방식을 정한다
-      (빈 문자열로 채울지, 키 생략을 학습기가 허용하는지)
+- [ ] Find where this format was generated (locate the conversion script).
+- [ ] Decide how to align the formats:
+      (a) Add role-specific serialization as an official exporter mode and document
+      it, making the conversion reproducible from repository code; or
+      (b) Keep the uniform five-key format canonical and verify that the public HF
+      dataset uses it before publication.
+- [ ] Decide how training handles assistant turns without thinking (24/703):
+      fill with an empty string or allow the trainer to accept an omitted key.
 
-`datasample/`은 HF 캐시 흔적(.gitattributes, .cache)까지 든 33MB 디렉토리가
-작업 트리 안에 untracked로 있던 것 — .gitignore에 추가했다. 데이터 배포는
-저장소가 아니라 HF 데이터셋 저장소의 몫이다.
+`datasample/` was an untracked 33 MB working-tree directory including HF cache
+files (`.gitattributes`, `.cache`); it was added to `.gitignore`. Distribute data
+through the HF dataset repository.
 
-## soffice를 쓰려면 LibreOffice가 든 이미지가 있어야 한다
+## soffice requires an image containing LibreOffice
 
-`soffice` 서버는 `soffice --headless`를 `SandboxAccess.exec`로 넘긴다. 즉 LibreOffice가
-**샌드박스 컨테이너 안에** 있어야 한다. `pdf`·`xlsx`가 바이트만 꺼내 서버 프로세스에서
-파싱하는 것과 다르다 — 그쪽 의존성(pypdf, openpyxl)은 순수 파이썬이라 PEP 723으로
-해결되지만, LibreOffice는 시스템 바이너리라 uv/pip으로 설치할 수 없다.
+The `soffice` server passes `soffice --headless` to `SandboxAccess.exec`, so
+LibreOffice must be **inside the sandbox container**. Unlike `pdf` and `xlsx`,
+which retrieve bytes and parse them in the server process, LibreOffice is a
+system binary that uv/pip cannot install. The other servers' pure-Python
+pypdf/openpyxl dependencies are supplied through PEP 723.
 
-이미지를 어디에 물리느냐는 더 이상 문제가 아니다. 태스크가 `docker_image`를 들고 오면
-그것이 config의 이미지를 대신하므로, 문서 변환 시드에 해당 이미지를 적어 넣으면 된다.
-세트마다 config를 나눌 필요는 없다. 남은 일은 그 이미지를 실제로 만드는 것뿐이다.
+Image selection is already supported: a task's `docker_image` overrides the
+configured image. Document-conversion seeds can therefore specify it directly,
+without separate configs per set. The remaining work is to build that image.
 
-- [ ] LibreOffice 포함 이미지 빌드 및 레지스트리 등록
+- [ ] Build and publish an image containing LibreOffice.
 
   ```dockerfile
   FROM python:3.12-slim
@@ -47,39 +49,42 @@ exporter 산출물이 아니라 **역할별 키셋**으로 직렬화되어 있�
       libreoffice-writer libreoffice-calc && rm -rf /var/lib/apt/lists/*
   ```
 
-  전체 `libreoffice`는 1GB+, writer/calc만 400~600MB. 태스크마다 이미지를 받는 구조라
-  크기가 곧 pull 시간이다.
+  Full `libreoffice` exceeds 1 GB; writer/calc alone use 400–600 MB. Images are
+  fetched per task, so size directly affects pull time.
 
-- [ ] soffice를 쓰는 시드 작성 — 시드의 `docker_image`에 위 이미지를 지정
+- [ ] Write seeds using soffice and set their `docker_image` to this image.
 
-## 서버가 요구하는 샌드박스 바이너리가 선언되어 있지 않다
+## Servers do not declare required sandbox binaries
 
-위 문제의 일반형이고, 태스크마다 이미지가 달라지면서 오히려 커졌다. 예전에는 config의
-이미지 하나만 확인하면 됐지만, 지금은 시드 수백 줄에 흩어진 이미지가 각각 그 바이너리를
-갖고 있는지 사람이 맞춰볼 방법이 없다.
+This generalizes the image problem above. Per-task images make manual checking
+harder: instead of verifying one configured image, required binaries must be
+matched against images spread across hundreds of seed rows.
 
-soffice를 include한 채 그것이 없는 이미지로 돌리면 **런타임 툴 호출에서만** 실패하고
-기동 시점에는 안 걸린다. 궤적은 정상 종료하고 툴만 조용히 실패하므로, fail-fast
-원칙(선언되지 않은 도구가 궤적에 영향을 주지 않는다)에서 벗어난다.
+Including soffice with an image that lacks it fails **only during a runtime tool
+call**, not at startup. The trajectory finishes normally while the tool fails,
+violating the fail-fast principle that undeclared tools should not affect traces.
 
-- [x] 매니페스트에 필요 바이너리를 선언하고(`requires_binaries: ["soffice"]`),
-      샌드박스 기동 직후 `command -v`로 확인해 없으면 태스크를 거부한다.
-      기동 "시점"이 아니라 태스크마다 검사하는 이유: 시드가 `docker_image`를
-      들고 오면 그 이미지 기준으로 봐야 하고, 그 샌드박스는 그때에야 생긴다.
-      config 공유 이미지에 없으면 런 전체 중단, 태스크가 들고 온 이미지에
-      없으면 그 태스크만 재시도 없이 error로 기록된다.
+- [x] Declare required binaries in manifests (`requires_binaries: ["soffice"]`)
+      and check with `command -v` immediately after sandbox startup, rejecting
+      tasks when binaries are absent. Check each task because its `docker_image`
+      may override the shared config. A missing binary in the shared image aborts
+      the run; in a task-supplied image, only that task is recorded as an error,
+      without retry.
 
-## 그 외
+## Other items
 
-- [ ] `datasets/swebench_local` 이름 변경 — SWE 전용이 아니라 "이슈를 받아 diff를
-      제출하는 태스크" 형태를 가리키므로 `patch_diff` 쪽이 정확하다. 현재 이 로더를
-      쓰는 config도 없는 미사용 경로.
-- [ ] MCP 서버 동작 단위 테스트 — `tests/test_mcp_manifests.py`는 매니페스트와 구현의
-      툴 이름 일치만 본다. 스모크 테스트를 걷어내면서 "실제로 띄워 호출하는" 검증이
-      사라졌으므로, sqlite JOIN 오답 같은 동작 버그는 지금 아무 테스트도 못 잡는다.
-- [ ] 시드 난이도 — Kimi-K3 기준 정답률 99%, 툴 실패 1/300. 작은 모델 SFT용으로는
-      충분할 수 있으나 GRPO는 reward 분산이 없어 학습이 안 된다. RL 데이터가 필요하면
-      방해 요소·툴 선택 모호성·홉 증가로 난이도를 올린 별도 세트가 필요하다.
-- [ ] `toolcall_log_error_report` 동점 처리 — 생성기는 동점 시 이른 시각을 정답으로
-      잡는데 지시문에 그 규칙이 없다. 300건 중 3건이 이것 때문에 오답 처리됐다.
-      동점이 생기는 데이터를 아예 만들지 않는 쪽이 규칙을 늘리는 것보다 낫다.
+- [ ] Rename `datasets/swebench_local`: it represents tasks that receive an issue
+      and submit a diff, not just SWE. `patch_diff` would be more accurate. This
+      path is unused; no current config uses the loader.
+- [ ] Add MCP server behavior unit tests. `tests/test_mcp_manifests.py` only checks
+      that manifest and implementation tool names match. Removing smoke tests
+      removed actual launch-and-call coverage, so behavior bugs such as incorrect
+      SQLite JOIN results currently go undetected.
+- [ ] Increase seed difficulty. Kimi-K3 achieved 99% accuracy with 1/300 tool
+      failures. This may suffice for small-model SFT, but GRPO has no reward
+      variance to learn from. RL data needs a separate harder set with distractors,
+      ambiguous tool selection, and more hops.
+- [ ] Handle ties in `toolcall_log_error_report`. The generator treats the earlier
+      timestamp as correct, but the instructions omit that rule. This caused
+      three wrong answers in 300 cases. Avoiding tied data is preferable to
+      adding another rule.

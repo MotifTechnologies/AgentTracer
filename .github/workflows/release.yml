@@ -1,0 +1,68 @@
+name: Release
+
+# Attaches the SBOM set to a published release. Actions artifacts expire after
+# 90 days; release assets stay with the tag they describe. The steps mirror
+# the Security workflow's `licenses` job (tests/test_release_workflow.py keeps
+# them in step), but run at the release tag.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to (re)attach the SBOM set to
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-sbom-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  sbom:
+    name: sbom
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # gh release upload
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          version: "0.12.22"
+          enable-cache: true
+      - run: uv sync --locked --dev --group compliance
+      - name: Generate runtime, development and MCP SBOMs
+        run: uv run --no-sync python .github/scripts/build_sbom.py
+      # A release whose inventory fails policy gets no SBOM attached: the
+      # failed run is the signal, and its artifact below is the evidence.
+      - name: Check SBOM license declarations
+        run: uv run --no-sync python .github/scripts/check_licenses.py sbom/*.cdx.json --report sbom/license-report.json
+      - name: Package the SBOM set
+        run: |
+          mkdir -p sbom/release
+          archive="sbom/release/agent-tracer-${TAG}-sbom.zip"
+          (cd sbom && python3 -m zipfile -c "release/$(basename "$archive")" \
+            *.cdx.json *.requirements.txt index.json license-report.json)
+          (cd sbom/release && sha256sum "$(basename "$archive")" > "$(basename "$archive").sha256")
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" sbom/release/* --clobber --repo "$GITHUB_REPOSITORY"
+      - name: Preserve SBOMs and policy results, including failures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-sbom-${{ env.TAG }}-${{ github.run_attempt }}
+          path: |
+            sbom/*.cdx.json
+            sbom/*.requirements.txt
+            sbom/index.json
+            sbom/license-report.json
+          if-no-files-found: warn
+          retention-days: 90

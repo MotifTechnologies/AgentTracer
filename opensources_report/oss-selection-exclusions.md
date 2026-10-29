@@ -1,51 +1,51 @@
-# OSS 선정 제외 목록
+# OSS selection exclusions
 
-문서 ID: OSS-SEL-001 · 버전: 1.1 · 작성일: 2026-10-14 · 수정일: 2026-10-16
+Document ID: OSS-SEL-001 · Version: 1.1 · Created: 2026-10-14 · Updated: 2026-10-16
 
-적용 범위는 이 저장소의 Python 의존성 및 패키징된 stdio MCP 환경이다.
-아래 표는 [기존 라이선스 검사 코드](../.github/scripts/check_licenses.py)의
-판정을 선정 시 확인할 수 있도록 정리한 것이다.
+Scope: Python dependencies and packaged stdio MCP environments in this repository.
+The table summarizes decisions made by the [existing license checker](../.github/scripts/check_licenses.py)
+for use when selecting dependencies.
 
-## 제외·보류 기준
+## Exclusion and hold criteria
 
-| ID | 대상 조건 | 선정 처리 | 근거 및 해제 조건 |
+| ID | Condition | Selection decision | Evidence and conditions for reconsideration |
 | --- | --- | --- | --- |
-| EX-01 | 유효한 SPDX 표현식이 허용 목록으로 평가되지 않음 (`blocked`) | 현 정책에서 도입 제외 | 허용 대안이 있는 정확한 `OR` 표현식인지 확인. 정책 변경이 필요하면 근거·코드·테스트를 포함한 PR 승인 필요 |
-| EX-02 | 선언 누락, 미인식·사용자 정의 라이선스, `LicenseRef` 등 (`unknown`) | 근거 확인 전 도입 보류 | 배포된 원문·버전·조건을 검토하고 기존 해시 기반 검토 방식에 따라 근거를 추가 |
-| EX-03 | `AND`의 일부가 비허용이거나, 승인되지 않은 `WITH` 조합 | 도입 제외 또는 재검토 보류 | 구성 조건 전체를 검토하고 충족 여부 확인 |
-| EX-04 | pypdfium2의 미검토 버전·플랫폼·선언 또는 고지 파일의 누락·추가·중복·변경 | 기존 특례 적용 제외 | 전체 고지 파일 및 배포 의무를 재검토하고 정확한 파일명·SHA-256 집합을 승인 PR에 반영 |
-| EX-05 | MCP script lock 누락, 새 실행 방식으로 스캔 불가, 불완전한 SBOM | 검증 완료 전 도입 보류 | lock 및 수집 범위를 보완하고 완전한 SBOM과 검사 통과를 확인 |
+| EX-01 | A valid SPDX expression does not evaluate to an accepted license (`blocked`) | Exclude under the current policy | Check for an exact `OR` expression with an accepted alternative. Policy changes require an approved PR with evidence, code, and tests |
+| EX-02 | Missing, unrecognized, or custom declaration, including `LicenseRef` (`unknown`) | Hold adoption pending evidence | Review distributed texts, versions, and terms; add evidence through the existing hash-based review process |
+| EX-03 | An `AND` operand is disallowed, or a `WITH` combination is not approved | Exclude or hold for reassessment | Review all combined conditions and verify compliance |
+| EX-04 | Unreviewed pypdfium2 version, platform, or declaration; missing, added, duplicated, or changed notice files | Do not apply the existing special-case review | Reassess all notice files and distribution obligations; record the exact filename/SHA-256 set in the approval PR |
+| EX-05 | Missing MCP script lock, an unsupported launch format that cannot be scanned, or an incomplete SBOM | Hold adoption until verification is complete | Complete locks and collection coverage, then confirm a complete SBOM and passing checks |
 
-예를 들어 `GPL-3.0-only`는 현 허용 목록에 없어 차단된다. 다만
-`MIT OR GPL-3.0-only`처럼 검사기가 인식하는 유효한 표현식에 허용 대안이 있으면
-통과할 수 있다.
+For example, `GPL-3.0-only` is blocked because it is absent from the accepted list.
+A valid expression recognized by the checker can pass if it includes an accepted alternative,
+as in `MIT OR GPL-3.0-only`.
 
-## 허용 및 개별 검토와의 관계
+## Relationship to accepted licenses and individual reviews
 
-| 구분 | 현재 관리 대상 | 근거 |
+| Category | Managed item | Evidence |
 | --- | --- | --- |
-| 허용 목록 | `ACCEPTED`에 등록된 정확한 SPDX 식별자 | [검사 코드](../.github/scripts/check_licenses.py) |
-| 원문 확인 후 매핑 | python-dateutil 2.9.0.post0의 `Dual License` 선언 | 동일 코드의 `REVIEWED_TEXTS`, 버전·원문 SHA-256 |
-| 고지 묶음 개별 검토 | pypdfium2 5.13.0, 검토된 Linux x86_64 / Windows x64 wheel | [검토 문서](../docs/pypdfium2-license-review.md), [파일 해시 목록](../.github/license-reviews/pypdfium2-5.13.0.json) |
-| 취약점 수용 예외 | Pillow 관련 예외 식별자 | [pip-audit-ignore.txt](../.github/pip-audit-ignore.txt); 라이선스 제외 목록과 별개 |
+| Accepted list | Exact SPDX identifiers in `ACCEPTED` | [Check implementation](../.github/scripts/check_licenses.py) |
+| Mapping after text review | python-dateutil 2.9.0.post0's `Dual License` declaration | `REVIEWED_TEXTS` in the same code, version, and text SHA-256 |
+| Individual notice-bundle review | pypdfium2 5.13.0, reviewed Linux x86_64 / Windows x64 wheels | [Review](../docs/pypdfium2-license-review.md), [file hashes](../.github/license-reviews/pypdfium2-5.13.0.json) |
+| Accepted vulnerability exceptions | Pillow-related exception identifiers | [pip-audit-ignore.txt](../.github/pip-audit-ignore.txt); separate from license exclusions |
 
-LGPL·MPL 일부 식별자도 현재 `ACCEPTED`에 포함된다.
-배포 시 고지·소스 제공 조건은 해당 검토 문서와 원문을 기준으로 확인한다.
+Some LGPL and MPL identifiers are also in `ACCEPTED`.
+Check the relevant review and original texts for distribution notices and source-provision requirements.
 
-## 실제 제외 사례 대장
+## Actual exclusion register
 
-2026-10-14 조사 기준: 개별 제외 사례 미등록.
+Assessment as of 2026-10-14: no individual exclusion cases registered.
 
-| 사례 ID | OSS / 버전 / 사용 목적 | 적용 기준 | 검토 결과 | 승인·결정 PR | 재검토 조건 |
+| Case ID | OSS / version / purpose | Applicable criterion | Review result | Approval / decision PR | Reassessment conditions |
 | --- | --- | --- | --- | --- | --- |
-| 미등록 | 확인된 실제 제외 사례 없음 | 해당 없음 | 미확인 | 해당 없음 | 실제 사례 발생 시 등록 |
+| Not registered | No confirmed actual exclusion case | Not applicable | Unconfirmed | Not applicable | Register when a case occurs |
 
-사례가 발생하면 실제 패키지·버전, 제외 사유, 검토일과 담당자, 대체재,
-재검토 조건을 해당 PR에 기록하고 이 표에서 연결한다.
+For each actual case, record the package and version, exclusion reason, review date and owner,
+alternative, and reassessment conditions in its PR, then link it from this table.
 
-## 변경 및 재검토
+## Changes and reassessment
 
-- 기존 정책 변경 이력은 [초기 도입](https://github.com/MotifTechnologies/motif-agent-tracer-v2/commit/bd86549), [SBOM 정책 개선](https://github.com/MotifTechnologies/motif-agent-tracer-v2/commit/24af3fe), [wheel 검토 추가](https://github.com/MotifTechnologies/motif-agent-tracer-v2/commit/d80e065)에 남아 있다.
-- 매주 월요일 03:00 UTC 자동 검사와 의존성·라이선스 근거 변경 시 검사를 수행한다.
-- 선정 재평가는 사례 PR에 목적 적합성·대안·조건 변경을 기록한다.
-- OS 유틸리티·외부 서비스·데이터/API 권리는 대상별 검토 기록을 남긴다.
+- Existing policy history: [initial introduction](https://github.com/MotifTechnologies/motif-agent-tracer-v2/commit/bd86549), [SBOM policy improvements](https://github.com/MotifTechnologies/motif-agent-tracer-v2/commit/24af3fe), [wheel review](https://github.com/MotifTechnologies/motif-agent-tracer-v2/commit/d80e065).
+- Run automatic checks every Monday at 03:00 UTC and when dependencies or license evidence change.
+- For selection reassessment, record suitability for the intended use, alternatives, and changed conditions in the case PR.
+- Keep individual review records for OS utilities, external services, and data/API rights.

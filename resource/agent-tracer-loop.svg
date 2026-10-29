@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-1260 -10 740 520" role="img" aria-labelledby="title desc">
+<title id="title">AgentTracer reasoning loop</title>
+<desc id="desc">English rendering of the loop page in agent-tracer.drawio.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 L3 5 Z" fill="#666666"/></marker></defs>
+<rect x="-1260" y="-10" width="740" height="520" fill="white"/>
+<rect x="-1240" y="10" width="700" height="480" rx="10" fill="#dae8fc" stroke="#6c8ebf" stroke-width="2"/>
+<ellipse cx="-1100" cy="184" rx="10" ry="10" fill="#f5f5f5" stroke="#666666" stroke-width="2"/>
+<ellipse cx="-1100" cy="305" rx="10" ry="10" fill="#f5f5f5" stroke="#666666" stroke-width="2"/>
+<path d="M-790 335 V365 H-970 V380" fill="none" stroke="#666666" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M-1100 225 V194" fill="none" stroke="#666666" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M-1130 184 H-1110" fill="none" stroke="#666666" stroke-width="2" stroke-linejoin="round"/>
+<path d="M-730 184 H-690" fill="none" stroke="#666666" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M-630 214 V245 H-970 V260" fill="none" stroke="#666666" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M-890 305 H-850" fill="none" stroke="#666666" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M-1050 305 H-1090" fill="none" stroke="#666666" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M-890 184 H-850" fill="none" stroke="#666666" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M-970 139 V100" fill="none" stroke="#666666" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M-1100 295 V265" fill="none" stroke="#666666" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M-1050 425 H-1100 V315" fill="none" stroke="#666666" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M-890 425 H-845" fill="none" stroke="#666666" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M-1090 184 H-1050" fill="none" stroke="#666666" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<ellipse cx="-1175" cy="184" rx="45" ry="30" fill="#f5f5f5" stroke="#666666" stroke-width="2"/><text x="-1175" y="184" text-anchor="middle" dominant-baseline="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="bold" fill="#222">Task input</text>
+<rect x="-850" y="154" width="120" height="60" rx="10" fill="#f5f5f5" stroke="#666666" stroke-width="2"/><text x="-790" y="184" text-anchor="middle" dominant-baseline="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="bold" fill="#222">Call model</text>
+<rect x="-690" y="154" width="120" height="60" rx="10" fill="#f5f5f5" stroke="#666666" stroke-width="2"/><text x="-630" y="184" text-anchor="middle" dominant-baseline="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="bold" fill="#222">Receive response</text>
+<polygon points="-970,260 -890,305 -970,350 -1050,305" fill="#f5f5f5" stroke="#666666" stroke-width="2"/><text x="-970" y="305" text-anchor="middle" dominant-baseline="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="bold" fill="#222">tool_call present?</text>
+<rect x="-850" y="275" width="120" height="60" rx="10" fill="#f5f5f5" stroke="#666666" stroke-width="2"/><text x="-790" y="305" text-anchor="middle" dominant-baseline="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="bold" fill="#222">Execute tool</text>
+<rect x="-1145" y="225" width="90" height="40" rx="10" fill="#f5f5f5" stroke="#666666" stroke-width="2"/><text x="-1100" y="238.18" text-anchor="middle" dominant-baseline="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="bold" fill="#222">Append to</text><text x="-1100" y="251.82" text-anchor="middle" dominant-baseline="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="normal" fill="#222">messages</text>
+<polygon points="-970,139 -890,184 -970,229 -1050,184" fill="#f5f5f5" stroke="#666666" stroke-width="2"/><text x="-970" y="175.94" text-anchor="middle" dominant-baseline="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="bold" fill="#222">max_turns</text><text x="-970" y="192.06" text-anchor="middle" dominant-baseline="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#222">reached?</text>
+<ellipse cx="-970" cy="65" rx="55" ry="35" fill="#f8cecc" stroke="#b85450" stroke-width="2"/><text x="-970" y="48.88" text-anchor="middle" dominant-baseline="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="bold" fill="#222">End</text><text x="-970" y="65" text-anchor="middle" dominant-baseline="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#222">max_turns</text><text x="-970" y="81.12" text-anchor="middle" dominant-baseline="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#222">exceeded</text>
+<polygon points="-970,380 -890,425 -970,470 -1050,425" fill="#f5f5f5" stroke="#666666" stroke-width="2"/><text x="-970" y="425" text-anchor="middle" dominant-baseline="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="bold" fill="#222">finish called?</text>
+<ellipse cx="-790" cy="425" rx="55" ry="35" fill="#d5e8d4" stroke="#82b366" stroke-width="2"/><text x="-790" y="416.94" text-anchor="middle" dominant-baseline="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="bold" fill="#222">End</text><text x="-790" y="433.06" text-anchor="middle" dominant-baseline="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="normal" fill="#222">submitted</text>
+<text x="-870" y="176" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#333">N</text>
+<text x="-960" y="120" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#333">Y</text>
+<text x="-870" y="297" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#333">Y</text>
+<text x="-1070" y="297" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#333">N</text>
+<text x="-1070" y="417" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#333">N</text>
+<text x="-870" y="417" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#333">Y</text>
+</svg>

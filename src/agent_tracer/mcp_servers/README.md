@@ -1,166 +1,181 @@
-# mcp_servers/ — MCP 서버 자동 디스커버리 디렉토리
+# mcp_servers/ — automatic MCP server discovery
 
-agent-tracer 러너는 시작 시 이 디렉토리(패키지 내장, config `mcp.discovery_dir`로 교체 가능)를 스캔해서 발견된 MCP 서버를 **전부 자동
-등록**한다(default all). 폴더에 넣는 것만으로 에이전트 툴셋에 편입되며, 별도 등록
-코드는 필요 없다.
+At startup, the agent-tracer runner scans this packaged directory (overridable
+with `mcp.discovery_dir`) and **registers every discovered MCP server** by default.
+Adding a folder adds a server to the agent's toolset; no registration code is needed.
 
-## 컨벤션
+## Conventions
 
-- **하위 폴더 하나 = MCP 서버 하나.** 폴더명이 곧 서버명이다.
-- 각 폴더에는 기동 방법을 선언하는 **`mcp.json` 매니페스트**가 반드시 있어야 한다.
-  스키마: [`mcp.schema.json`](./mcp.schema.json) (manifest_version 1)
-- `mcp.json`이 없거나 스키마 검증에 실패하는 폴더는 등록하지 않고 **에러로 실행을
-  중단**한다(fail-fast — 조용히 빠진 툴셋으로 대량 생성되는 사고 방지).
-- 서버명은 YAML의 `mcp.include` / `mcp.exclude`와 툴 네임스페이스(`mcp:<서버명>/<툴명>`)에
-  그대로 쓰인다.
+- **One subdirectory = one MCP server.** Its folder name is its server name.
+- Each folder must contain an **`mcp.json` manifest** declaring how to start it.
+  Schema: [`mcp.schema.json`](./mcp.schema.json), manifest version 1.
+- A missing or invalid manifest **aborts the run** instead of skipping the folder.
+  This prevents bulk generation with an incomplete toolset.
+- Names are used unchanged in YAML `mcp.include` / `mcp.exclude` and tool
+  namespaces (`mcp:<server-name>/<tool-name>`).
 
-```
+```text
 src/agent_tracer/mcp_servers/
-├── README.md          # 이 문서
-├── mcp.schema.json    # 매니페스트 JSON Schema
-├── echo/              # 예제 서버 (계약 레퍼런스)
+├── README.md          # this guide
+├── mcp.schema.json    # manifest JSON Schema
+├── echo/              # example server (contract reference)
 │   ├── mcp.json
 │   ├── server.py
-│   └── server.py.lock # PEP 723 의존성의 고정 버전
-├── calculator/        # 정확 연산
-├── time/              # 현재 시각 · 타임존 변환
-├── filesystem/        # 파일 읽기·쓰기·편집·검색      [샌드박스]
-├── sqlite/            # SQLite 쿼리·수정              [샌드박스]
-├── soffice/           # 문서 변환 (LibreOffice)       [샌드박스]
-├── pdf/               # PDF 텍스트·표 추출            [샌드박스]
-├── xlsx/              # 워크북 읽기·셀 편집           [샌드박스]
-└── context7/          # 라이브러리 문서 조회          [외부 HTTP]
+│   └── server.py.lock # pinned PEP 723 dependencies
+├── calculator/        # exact arithmetic
+├── time/              # current time and timezone conversion
+├── filesystem/        # read/write/edit/search files   [sandbox]
+├── sqlite/            # query and modify SQLite       [sandbox]
+├── soffice/           # LibreOffice document conversion [sandbox]
+├── pdf/               # extract PDF text and tables   [sandbox]
+├── xlsx/              # read workbooks and edit cells [sandbox]
+└── context7/          # library documentation lookup  [external HTTP]
 
-stdio 서버 폴더는 mcp.json · server.py · server.py.lock 로 동일하다.
-단 `[외부 HTTP]`는 server.py가 없다 — 우리가 띄우는 게 아니다.
+Each stdio server folder contains mcp.json, server.py, and server.py.lock.
+An [external HTTP] server has no server.py: the runner does not launch it.
 ```
 
-`[샌드박스]` 표시가 있는 서버는 에이전트 파일을 다루므로 아래 "샌드박스를 다루는
-서버" 계약을 따른다. 나머지는 샌드박스 환경변수를 무시한다.
+Servers marked `[sandbox]` work with agent files and follow the
+[Sandbox-aware servers](#sandbox-aware-servers) contract below. Others ignore
+sandbox environment variables.
 
-`[외부 HTTP]`는 `transport: http`로 남의 엔드포인트를 가리킨다. spawn하는 프로세스가
-없으니 샌드박스 환경변수도 무관하고, 대신 **네트워크와 그쪽 가용성에 의존**한다.
-호출이 실패하면 먼저 그쪽을 의심할 것.
+`[external HTTP]` points to another service's endpoint using `transport: http`.
+There is no spawned process or sandbox environment; it **depends on the network
+and the remote service's availability**. Check those first if calls fail.
 
-매니페스트가 선언한 툴과 `server.py`가 구현한 툴이 같은지는 `tests/test_mcp_manifests.py`가
-검증한다. 서버를 띄우지 않고 소스를 읽어 비교하므로, 툴을 추가·개명하고 mcp.json을
-빠뜨리면(또는 그 반대) 일반 `pytest`에서 바로 잡힌다.
+`tests/test_mcp_manifests.py` verifies that tools declared in manifests match
+those implemented in `server.py`. It compares source without launching servers,
+so normal `pytest` catches tools added or renamed on only one side.
 
-> 범용 search·fetch는 MCP가 아니라 stirrup 내장 web 툴(web_fetch/web_search)을 쓴다
-> (config `tools.web: true`, web_search는 `BRAVE_API_KEY` 필요). 같은 걸 MCP로
-> 또 붙이면 모델에게 중복된 툴이 두 벌 보인다. `context7`은 임의 URL이 아니라 특정
-> 라이브러리 문서를 정리해서 주는 거라 별개로 둔다 — 겹치는 부분이 있으니, 실제
-> 궤적에서 둘 다 쓰이는지는 보고 판단할 것.
+> General search and fetch use Stirrup's built-in `web_fetch` / `web_search`,
+> not MCP (`tools.web: true`; `web_search` needs `BRAVE_API_KEY`). Adding the
+> same functions through MCP exposes duplicate toolsets to the model.
+> `context7` serves curated documentation for specific libraries rather than
+> arbitrary URLs, so it remains separate. Inspect actual trajectories to see
+> whether the overlapping capabilities are both used.
 
-### 왜 이 서버들인가
+### Why these servers?
 
-`code_exec`으로 다 되는데도 툴로 두는 이유는 **궤적에 무엇이 남는가**다.
-`cat -n f | sed -n '20,40p'`는 모델의 셸 숙련도를 기록하고,
-`read_file(path=..., offset=20)`은 수행한 단계를 기록한다. 학습 데이터로 쓸 거면
-후자가 쓸모 있고, 왕복 비용은 같다.
+Even when `code_exec` can do the same work, dedicated tools change **what the
+trajectory records**. `cat -n f | sed -n '20,40p'` records shell proficiency;
+`read_file(path=..., offset=20)` records the operation. The latter is more useful
+as training data, with the same round-trip cost.
 
-- `filesystem` — `edit_file`은 셸에 마땅한 대응물이 없다. `sed -i`를 한 번에
-  맞히는 건 태스크와 무관한 기술이고, 틀리면 파일이 조용히 깨진다. 여기서는
-  정확히 한 번 매칭되지 않으면 개수와 함께 거부한다.
-- `sqlite` — 합계·조인을 모델이 암산하면 자신 있게 틀린다. 쿼리는 검증 가능하다.
-  샌드박스에 `sqlite3` CLI는 대개 없으므로 `python3`(표준 라이브러리 sqlite3)로
-  실행한다.
-- `time` — 모델에겐 시계가 없다. 기억한 오프셋은 DST 경계·인도(+05:30) 같은
-  반시간 오프셋에서 틀리고, 그게 보통 태스크가 노리는 지점이다.
-- `pdf` — `soffice`는 PDF로 *내보내는* 건 잘하고 *읽는* 건 못 한다(LibreOffice가
-  PDF를 그림으로 열어서 텍스트가 흐트러지거나 아예 안 나온다). 추출은 다른 일이다.
-  표는 `extract_text`로 뽑으면 열이 붙어버려서 숫자를 오독하게 되므로 셀로 분리해
-  준다. 텍스트가 없는 페이지는 빈 문자열이 아니라 **"스캔본으로 보인다"고 말한다** —
-  모델이 "빈 문서"로 결론내는 걸 막는다. 이건 **페이지 단위**다. 전 페이지가 비었을
-  때만 알리면, 도장 하나 찍힌 페이지가 섞인 50쪽 스캔본은 아무 말 없이 지나간다.
-  네 툴 모두 한 번에 50쪽까지만 본다 — `search_text`도 포함이다. 안 맞는 패턴 하나가
-  3,000쪽을 다 뽑으면 `call_timeout_s`(180s)를 넘기고, stdio 서버는 단일 스레드라
-  그동안 다른 호출도 같이 막힌다.
-- `xlsx` — `soffice`로 CSV 변환하면 시트·수식·셀 주소가 다 날아간다. 스프레드시트
-  질문은 보통 그것들에 대한 질문이다. 함정 두 개를 설계로 막았다:
-  **(1) 수식의 값은 파일에 없다.** openpyxl은 수식이나 캐시된 값 중 하나만 읽는데,
-  스크립트로 만들고 Excel로 연 적 없는 파일은 캐시가 비어 있다. 값을 요청하면 계산
-  셀이 전부 `None`으로 와서 "빈 칸"으로 읽힌다. 그래서 **둘 다 읽어 함께 돌려주고**,
-  캐시 없는 수식은 따로 알린다. **(2) 왕복이 손실적이다.** openpyxl은 저장할 때 파일을
-  다시 만들어서 차트·이미지·도형·피벗·.xlsm 매크로·시트 `extLst`(스파크라인, x14 데이터
-  유효성)가 사라진다. 대부분은 openpyxl 객체 모델에 아예 안 올라오므로 **파일의 파트를
-  직접 보고 판단해서 쓰기를 거부한다.** 셀 주석은 살아남으므로 거부하지 않는다. 거부할 수
-  없는 손실이 하나 있다 — 저장하면 워크북 전체의 **수식 캐시 값이 지워진다.** 그건
-  응답으로 알린다.
-- `read_range`는 셀을 **읽기 전에** 창을 정한다. openpyxl은 read-only가 아니면 used
-  range의 모든 좌표에 Cell을 만들어서, A1과 CZ200000만 든 4.8 KB 파일이 수 GB가 된다.
-  서버는 샌드박스 밖(cgroup 제한 없음)에서 돌기 때문에 그게 러너 호스트를 잡는다.
-- `context7` — 모델의 라이브러리 API 지식은 학습 시점에 묶여 있고, 낡은 시그니처를
-  자신 있게 쓴다. `time`이 시계를 주는 것과 같은 종류의 결핍 보충이다.
-  `resolve-library-id` → `query-docs` 2단계이고, 툴 이름이 하이픈인 건 우리가 정한
-  게 아니라 그쪽 스펙이다.
+- `filesystem`: `edit_file` has no convenient shell equivalent. Getting `sed -i`
+  right is unrelated to the task, and mistakes can silently damage a file.
+  This tool rejects edits unless exactly one match exists, reporting the count.
+- `sqlite`: models can confidently miscalculate sums and joins. Queries are
+  verifiable. Sandbox images often lack the `sqlite3` CLI, so the server uses
+  `python3` and its standard-library `sqlite3` module.
+- `time`: models have no clock. Recalled offsets fail around DST transitions and
+  half-hour offsets such as India (+05:30), often the point of the task.
+- `pdf`: `soffice` exports PDFs well but does not read them well; LibreOffice
+  treats PDFs as drawings, scrambling or omitting text. Extraction is a separate
+  job. `extract_text` can merge table columns and lead to misread numbers, so the
+  server separates cells. Pages without text are reported as **apparently
+  scanned**, rather than empty strings that suggest an empty document. Detection
+  is **per page**: one text-bearing stamp should not hide a 50-page scanned file.
+  All four tools, including `search_text`, inspect at most 50 pages per call.
+  Extracting 3,000 pages for one unmatched pattern can exceed `call_timeout_s`
+  (180 seconds), blocking other calls on the single-threaded stdio server.
+- `xlsx`: converting to CSV with `soffice` loses sheets, formulas, and cell
+  addresses, which are often the subject of spreadsheet questions. Two pitfalls
+  are handled explicitly. **(1) Formula results may be absent.** openpyxl reads
+  either formulas or cached results. Files created by scripts and never opened
+  in Excel may have no cache; calculated cells then appear as `None`. The server
+  returns both representations and identifies formulas without cached values.
+  **(2) Round trips can lose content.** Saving through openpyxl reconstructs the
+  workbook and may lose charts, images, shapes, pivots, .xlsm macros, and sheet
+  `extLst` features such as sparklines and x14 validation. Because many are absent
+  from openpyxl's object model, the server **inspects workbook parts directly
+  and refuses unsafe writes**. Cell comments survive and do not cause refusal.
+  One unavoidable loss is that saving clears the workbook's **formula result
+  cache**; the response reports this.
+- `read_range` bounds the range **before reading cells**. Outside read-only mode,
+  openpyxl can create a Cell for every coordinate in the used range. A 4.8 KB file
+  containing only A1 and CZ200000 can therefore consume several GB. The server
+  runs outside the sandbox's cgroup limits, so this can exhaust the runner host.
+- `context7`: a model's library API knowledge is tied to its training cutoff and
+  can confidently use old signatures. Documentation fills this gap, as `time`
+  supplies a clock. Its two-step API is `resolve-library-id` → `query-docs`;
+  those hyphenated names come from the service specification.
 
-**git 서버는 일부러 없다.** 기준을 뒤집으면 이유가 나온다 — 래퍼의 가치는 모델이
-그 CLI에 얼마나 서툰지에 비례하는데, git CLI는 모델이 가장 유창한 축이다. 게다가
-쓰기(commit·checkout·reset)를 열면 태스크 도중 작업 트리가 날아갈 경로가 생기고,
-읽기만 열면 어차피 커밋하러 셸에 들어간 모델이 조회도 거기서 끝낸다. 실제로 그랬다:
-읽기 전용 git 서버를 붙여 돌려봤을 때 모델은 `git__log` 대신
-`git rev-list --count`를 셸로 실행했다. 양쪽 다 값을 못 하므로 `code_exec`에 맡긴다.
+**There is deliberately no git server.** A wrapper helps most when a model is
+unfamiliar with the CLI, while git is one of its strongest tools. Exposing writes
+(commit, checkout, reset) risks losing a task's working tree. With read-only git,
+models still use the shell when committing and perform reads there too. A trial
+read-only server showed exactly this: the model used `git rev-list --count`
+instead of `git__log`. Leave git operations to `code_exec`.
 
-## YAML에서 포함 서버 제어
+## Selecting servers in YAML
 
-미지정 시 전체 등록이 기본값이다. 도메인별 config에서 불필요한 서버만 좁힌다.
+All servers are registered by default. Narrow the set in domain-specific configs.
 
 ```yaml
 mcp:
-  # discovery_dir: 미지정 시 패키지 내장 mcp_servers/ 사용
-  include: ["filesystem", "soffice"] # 이 서버들만 등록
-  # exclude: ["echo"]                # 또는 제외 방식 (include와 동시 사용 불가)
+  # discovery_dir: defaults to the packaged mcp_servers/ directory
+  include: ["filesystem", "soffice"] # register only these servers
+  # exclude: ["echo"]                # alternative; cannot be combined with include
 ```
 
-등록 결과(서버·툴 목록, 버전)는 궤적 metadata에 기록된다.
+Registered servers, tools, and versions are recorded in trajectory metadata.
 
-## 의존성 고정과 SBOM
+## Dependency locks and SBOMs
 
-각 stdio 서버의 PEP 723 inline dependencies는 인접한 `server.py.lock`으로 고정한다. 서버를 추가하거나 의존성을 변경한 뒤에는 저장소 루트에서 해당 lock을 생성·갱신하고 함께 커밋한다.
+Pin each stdio server's PEP 723 inline dependencies in its adjacent
+`server.py.lock`. After adding a server or changing dependencies, generate or
+update its lock from the repository root and commit it with the change.
 
 ```bash
 uv lock --script src/agent_tracer/mcp_servers/pdf/server.py
 ```
 
-특정 패키지의 수정 버전으로 갱신하려면 `--upgrade-package <package>`를 추가한다. 루트 `uv.lock`을 갱신해도 이 독립 환경의 lock은 바뀌지 않는다.
+Add `--upgrade-package <package>` to select a patched package version. Updating
+the root `uv.lock` does not update these independent environments.
 
-Security CI의 `licenses` job은 각 내장 stdio 서버의 lock을 사용해 별도 CycloneDX SBOM을 만든다. 현재 지원하는 기동 형식은 `uv run --quiet server.py`이며, lock 누락이나 지원하지 않는 기동 형식은 검사 실패다. 새로운 기동 형식은 SBOM 생성기에도 명시적으로 지원을 추가해야 한다. 검사 중 서버·에이전트·Docker를 실행하지 않는다.
+The Security CI `licenses` job uses each packaged stdio server's lock to create
+a separate CycloneDX SBOM. The supported launch form is currently
+`uv run --quiet server.py`. Missing locks or unsupported launch forms fail the
+check; support new launch forms explicitly in the SBOM generator. Checks do not
+start servers, agents, or Docker.
 
-외부 HTTP 서버는 `index.json`에 검사 제외 사유를 기록한다. 사용자 설정의 별도 `mcp.discovery_dir`도 이 저장소의 내장 서버 CI 검사 범위에는 포함되지 않는다. 결과 다운로드·라이선스 검토·배포 고지 절차는 [SBOM 운영 문서](../../../docs/sbom.md)를 따른다.
+External HTTP servers have their exclusion reasons recorded in `index.json`.
+A user-supplied `mcp.discovery_dir` is also outside CI's packaged-server scope.
+Follow the [SBOM operations guide](../../../docs/sbom.md) for downloads, license
+reviews, and distribution notices.
 
-## 샌드박스를 다루는 서버
+## Sandbox-aware servers
 
-에이전트 파일을 건드리는 서버는 **어느 샌드박스가 이번 태스크 것인지** 알아야 한다.
-매니페스트는 러너 기동 시 한 번 읽히고 샌드박스는 태스크마다 새로 만들어지므로,
-그 값을 매니페스트에 적어둘 방법은 없다 — 아직 존재하지 않는 값이다.
+Servers working with agent files must know **which sandbox belongs to the
+current task**. Manifests are read once at runner startup, while sandboxes are
+created per task, so the manifest cannot name a sandbox that does not yet exist.
 
-그래서 러너가 **spawn하는 모든 stdio 서버의 환경변수**로 넘긴다
-(구현: [`mcp/discovery.py`](../mcp/discovery.py)의 `sandbox_env`). 백엔드에 중립적인
-용어만 쓴다:
+The runner passes the identity through **environment variables to every spawned
+stdio server** (`sandbox_env` in [`mcp/discovery.py`](../mcp/discovery.py)), using
+backend-neutral names:
 
-| 변수 | 의미 |
-|---|---|
-| `AGENT_TRACER_ENV_TYPE` | 샌드박스를 만든 `environment.type` |
-| `AGENT_TRACER_SANDBOX_ID` | `environments.attach()`에 넘길 값 (local이면 없음) |
-| `AGENT_TRACER_WORKDIR` | 샌드박스 안 에이전트 작업 디렉토리 |
-| `AGENT_TRACER_HOST_DIR` | 샌드박스가 마운트한 호스트 경로 (마운트하는 백엔드만) |
-| `AGENT_TRACER_USER` | 샌드박스 안 사용자 (있는 백엔드만) |
-| `AGENT_TRACER_OPTIONS` | JSON — 백엔드별 추가 값, `attach()`에 그대로 전달. **`sandbox_options: true`를 선언한 매니페스트에만** |
+| Variable | Meaning |
+| --- | --- |
+| `AGENT_TRACER_ENV_TYPE` | The `environment.type` that created the sandbox |
+| `AGENT_TRACER_SANDBOX_ID` | Value for `environments.attach()`; absent for local |
+| `AGENT_TRACER_WORKDIR` | Agent working directory inside the sandbox |
+| `AGENT_TRACER_HOST_DIR` | Mounted host path, for backends that mount one |
+| `AGENT_TRACER_USER` | Sandbox user, for backends that define one |
+| `AGENT_TRACER_OPTIONS` | JSON backend-specific values passed directly to `attach()`; **only for manifests declaring `sandbox_options: true`** |
 
-`OPTIONS`를 뺀 나머지는 매니페스트별 opt-in이 아니라 **전부에 항상 세팅**되므로 새
-서버는 존재를 전제해도 된다. 빈 값은 `""`가 아니라 아예 빠지니 **존재 여부**로
-판단하면 된다. 매니페스트 `env`가 마지막에 병합되므로 필요하면 덮어쓸 수 있다.
+Except for `OPTIONS`, these variables are supplied to **all manifests**, without
+opt-in. Missing values are omitted rather than set to `""`; check for presence.
+Manifest `env` is merged last and can override them if needed.
 
-`OPTIONS`만 예외인 이유는 거기가 백엔드 크리덴셜이 들어가는 자리이기 때문이다 —
-백엔드는 여기서 자격증명을 꺼낸다. 계산만 하는 서버나 나중에 추가된 서드파티
-서버에 키가 갈 이유가 없으므로 샌드박스에 붙는 서버가 매니페스트에 직접 선언한다.
-`environment.options` 값은 `env:VAR_NAME` 참조를 지원하며 기동 시 해석된다 —
-해석 실패는 실행 거부다.
+`OPTIONS` is opt-in because it can carry backend credentials. Backends retrieve
+credentials there; calculation-only or third-party servers do not need them.
+Servers that attach to a sandbox declare this requirement in their manifests.
+`environment.options` supports `env:VAR_NAME` references resolved at startup;
+unresolved references prevent execution.
 
-읽는 쪽은 `environments.from_env()` 한 줄이면 된다 — 위 변수들을 해석해서
-`(access, workdir)`을 돌려준다. **백엔드로 분기하지 말 것.** 그래야 플러그인으로
-설치된 샌드박스가 서버 수정 없이 그대로 동작한다.
+Call `environments.from_env()` to obtain `(access, workdir)` from these variables.
+**Do not branch on backend type**: sandbox plugins should work without changes
+to server code.
 
 ```python
 from agent_tracer.environments import from_env, resolve
@@ -169,66 +184,68 @@ access, workdir = from_env()
 rc, out, err = access.exec(f"wc -l {resolve('data.csv', workdir)}")
 ```
 
-`access`가 제공하는 건 `exec(command, timeout_s)` 하나뿐이다
-([`environments/__init__.py`](../environments/__init__.py)의 `SandboxAccess`).
-파일 API도 수명주기도 없다 — 문서를 변환하는 서버에 필요한 건 명령 하나다.
+`access` provides only `exec(command, timeout_s)`
+([`SandboxAccess`](../environments/__init__.py)). It has no file API or lifecycle;
+document conversion servers need only a command interface.
 
-**바이트가 필요하면 `read_bytes` / `write_bytes`를 쓴다.** exec만 있는 통로로
-base64를 태워 보내는 게 전부지만, 셋이 같은 걸 필요로 해서 한군데로 모았다.
+**Use `read_bytes` / `write_bytes` for bytes.** They transfer base64 through the
+exec interface, sharing the implementation needed by three servers.
 
 ```python
 from agent_tracer.environments import from_env, read_bytes, resolve
 
 access, workdir = from_env()
-raw = read_bytes(access, resolve("report.pdf", workdir))  # 정확한 바이트
+raw = read_bytes(access, resolve("report.pdf", workdir))  # exact bytes
 ```
 
-`pdf`·`xlsx`가 이 위에 있다 — **샌드박스에서 바이트만 꺼내 서버 프로세스에서
-파싱한다.** pypdf·openpyxl을 샌드박스 이미지에 요구하지 않아도 되고(각자 PEP 723
-헤더에 선언), 이미지마다 다르게 실패하지도 않는다. 쓰기는 1 MiB, 읽기는 32 MiB에서
-막고 그 이상은 `code_exec`으로 넘긴다.
+`pdf` and `xlsx` build on this: **retrieve bytes from the sandbox and parse them
+in the server process**. Sandbox images do not need pypdf or openpyxl; each server
+declares them in its PEP 723 header, avoiding image-specific failures. Writes are
+limited to 1 MiB and reads to 32 MiB; use `code_exec` for larger transfers.
 
-바이트가 실제로 지나가는 통로라서 두 가지를 강제한다. **읽기는 돌아온 걸 검사한다** —
-`docker exec`는 로그인 셸이라 MOTD·conda 배너가 같은 stdout에 섞이고, base64는 기본값이
-알파벳 밖 문자를 *조용히 버려서* 몇 바이트 틀린 파일이 돌아온다. `validate=True`에 더해
-디코드 길이를 `stat` 크기와 대조한다. **쓰기는 나눠 보내고 원자적으로 덮는다** — argv
-하나의 상한은 ARG_MAX(2 MiB)가 아니라 MAX_ARG_STRLEN(128 KiB)이고 스크립트 전체가 인자
-하나라, 실제 한계는 98,244 바이트였다. 이제 조각내서 보내고 옆에 임시 파일로 쌓았다가
-`mv`로 덮는다 — 중간에 죽어도 원본이 잘려 있지 않다.
+Two safeguards protect byte transfers. **Validate reads**: login-shell output
+from `docker exec`, such as MOTD or conda banners, can mix into stdout. Base64
+normally discards non-alphabet characters silently, producing corrupted files.
+Use `validate=True` and compare decoded length with `stat` size. **Chunk writes
+and replace atomically**: the per-argument limit is MAX_ARG_STRLEN (128 KiB),
+not ARG_MAX (2 MiB). The whole script is one argument; the observed transfer limit
+was 98,244 bytes. Send chunks into an adjacent temporary file, then replace with
+`mv`, so an interrupted write does not truncate the original.
 
-이 서버들은 `attach()`를 쓰려고 `agent_tracer`를 import하는데, 각자 별도 `uv run`이라
-러너의 인터프리터를 물려받지 않는다. 그래서 러너가 `PYTHONPATH`도 같이 넘긴다 —
-PEP 723 헤더에는 그 서버가 실제로 쓰는 의존성만 적으면 된다.
+These servers import `agent_tracer` for `attach()`, but independent `uv run`
+processes do not inherit the runner's interpreter. The runner therefore passes
+`PYTHONPATH` too. PEP 723 headers need only each server's actual dependencies.
 
-`soffice/`가 이 패턴의 레퍼런스이고, `calculator/`는 샌드박스를 아예 쓰지 않는 쪽의
-레퍼런스다.
+`soffice/` is the sandbox-aware reference; `calculator/` is the reference that
+does not use a sandbox.
 
-## 매니페스트 작성 규칙 요약
+## Manifest fields
 
-| 필드 | 필수 | 설명 |
-|---|---|---|
-| `manifest_version` | ✅ | 현재 `1` 고정 |
-| `name` | ✅ | 폴더명과 일치해야 함 (`^[a-z][a-z0-9_-]*$`) |
-| `description` | ✅ | 한 줄 요약 — 궤적 metadata에 기록 |
-| `transport` | ✅ | `stdio` \| `http` |
-| `command` / `args` | stdio 시 | 러너가 spawn할 명령. 상대 경로는 매니페스트 폴더 기준 |
-| `url` | http 시 | streamable-HTTP 엔드포인트 (서버 수명주기는 외부 관리) |
-| `env` | | spawn 환경변수(stdio). 시크릿은 반드시 `"env:VAR_NAME"` 참조로 — 원문 저장 금지, 미해석 시 실행 거부 |
-| `headers` | | 매 요청에 붙는 HTTP 헤더(http 전용). `env` 와 같은 규율 — `env:` 참조는 기동 시 해석되고 실패하면 실행 거부, 그 외 값은 적은 그대로 전송. API 키를 매니페스트에 적으면 repo에 키를 공개하는 것. stdio에서는 **빈 객체라도** 선언 자체가 거부 |
-| `sandbox_options` | | 이 서버가 샌드박스에 붙는다는 선언(stdio 전용). 선언한 서버만 `AGENT_TRACER_OPTIONS`(= 백엔드 크리덴셜)를 받는다 |
-| `startup_timeout_s` | | initialize 핸드셰이크 대기 상한 (기본 15초). 클라이언트가 선택된 서버를 한 번에 순차 연결하므로 실제 상한은 선택된 매니페스트 값의 **합**. 넘기면 그 시도를 중단 |
-| `call_timeout_s` | | 툴 호출 타임아웃 (기본 60초, stdio·http 모두 적용). 넘긴 호출은 취소되고 모델에게 타임아웃 결과로 돌아간다 — 궤적은 계속된다 |
-| `tools` | | 선언적 툴 목록 (문서·계약 테스트용 — 런타임 진실은 MCP discovery) |
+| Field | Required | Description |
+| --- | --- | --- |
+| `manifest_version` | Yes | Currently fixed at `1` |
+| `name` | Yes | Must match the folder name (`^[a-z][a-z0-9_-]*$`) |
+| `description` | Yes | One-line summary recorded in trajectory metadata |
+| `transport` | Yes | `stdio` \| `http` |
+| `command` / `args` | For stdio | Command spawned by the runner; relative paths resolve from the manifest folder |
+| `url` | For HTTP | Streamable HTTP endpoint; server lifecycle is managed externally |
+| `env` | No | Spawn environment for stdio. Secrets must use `"env:VAR_NAME"` references; never store literal secrets. Unresolved references prevent execution |
+| `headers` | No | HTTP-only per-request headers. Like `env`, `env:` references resolve at startup and failure prevents execution; other values are sent literally. A literal API key exposes it in the repository. Even an empty headers object is rejected for stdio |
+| `sandbox_options` | No | Declares that this stdio server attaches to the sandbox. Only opted-in servers receive `AGENT_TRACER_OPTIONS` (backend credentials) |
+| `startup_timeout_s` | No | Initialize-handshake timeout, default 15 seconds. Selected servers connect sequentially, so the total upper bound is the **sum** of their manifest values. A timeout aborts that attempt |
+| `call_timeout_s` | No | Tool-call timeout, default 60 seconds, for stdio and HTTP. Timed-out calls are cancelled and returned to the model as timeout results; the trajectory continues |
+| `tools` | No | Declarative tool list for documentation and contract tests; runtime truth comes from MCP discovery |
 
-## 예제: echo 서버
+## Example: echo server
 
-[`echo/`](./echo/)는 계약의 최소 동작 레퍼런스다. 새 서버를 만들 때 이 구조를
-복사해서 시작하면 된다.
+[`echo/`](./echo/) is the minimal working contract reference. Copy its structure
+when creating a server.
 
 ```bash
-# 단독 실행 (러너가 하는 것과 동일한 방식)
+# Standalone invocation, matching the runner's launch method
 cd src/agent_tracer/mcp_servers/echo && uv run server.py
 ```
 
-서버 구현은 공식 MCP Python SDK(FastMCP)를 사용하고, 의존성은 PEP 723 인라인
-메타데이터로 선언해 `uv run` 한 번으로 기동되게 한다 — 폴더별 venv 관리가 필요 없다.
+Implement servers with the official MCP Python SDK (FastMCP) and declare
+dependencies as PEP 723 inline metadata. A single `uv run` then starts the server,
+without manually managing one virtual environment per folder.

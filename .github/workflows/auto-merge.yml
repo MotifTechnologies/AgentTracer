@@ -29,14 +29,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+      pull-requests: read
     steps:
+      # Writes go through the auto-merge App. GitHub starts no workflow for an
+      # event caused by GITHUB_TOKEN, so a queue entry it created never got its
+      # merge_group checks and timed out of the queue.
+      - name: Mint the auto-merge App token
+        id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.AUTO_MERGE_APP_ID }}
+          private-key: ${{ secrets.AUTO_MERGE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
       # This privileged workflow only calls GitHub APIs. Never check out or
       # execute PR code here, including code from forks or Dependabot branches.
       - name: Enable auto-merge or queue entry after required reviews and checks
         env:
           GH_TOKEN: ${{ github.token }}
+          APP_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           EVENT_NAME: ${{ github.event_name }}
@@ -70,7 +82,7 @@ jobs:
             head=$(jq -r '.headRefOid' <<< "$pr")
             if jq -e '.autoMergeRequest == null' <<< "$pr" > /dev/null; then
               if [[ "$EVENT_NAME" == "pull_request_target" ]]; then
-                gh pr merge "$number" --repo "$GH_REPO" \
+                GH_TOKEN="$APP_TOKEN" gh pr merge "$number" --repo "$GH_REPO" \
                   --auto --merge --match-head-commit "$head" || failed=1
               fi
               continue
@@ -90,7 +102,7 @@ jobs:
             id=$(jq -r '.id' <<< "$pr")
             # Native enqueue enforces repository rules; the head guard rejects
             # changes pushed since the approval/check state was read.
-            if ! gh api graphql -f id="$id" -f head="$head" \
+            if ! GH_TOKEN="$APP_TOKEN" gh api graphql -f id="$id" -f head="$head" \
               -f query='mutation($id:ID!, $head:GitObjectID!) {
                 enqueuePullRequest(input:{pullRequestId:$id, expectedHeadOid:$head}) {
                   mergeQueueEntry { id position state }

@@ -124,6 +124,10 @@ def convert_time(datetime_str: str, from_timezone: str, to_timezone: str) -> dic
             f"Could not read {datetime_str!r} as a date and time. "
             "Use ISO 8601, e.g. '2026-08-06T14:30'."
         ) from exc
+    # The offset is ignored, as documented. Left on, it also made the gap and
+    # fold checks compare an aware time with a naive one, which never matches,
+    # so every "...Z" or "...+09:00" input was refused as a skipped hour.
+    naive = naive.replace(tzinfo=None)
 
     _reject_unreal(naive, source, from_timezone, datetime_str)
     origin = naive.replace(tzinfo=source)

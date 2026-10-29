@@ -1,6 +1,7 @@
 name: Feature request
 description: Propose an improvement to agent-tracer.
 title: "[Feature]: "
+labels: ["enhancement"]
 body:
   - type: markdown
     attributes:

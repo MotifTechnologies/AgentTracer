@@ -39,10 +39,11 @@
 | 최신 main SBOM artifact | 생성 후 90일 보관 | 생성 2026-10-12 09:42:51 UTC / 만료 2027-01-10 09:41:58 UTC |
 | 주간 재점검 SBOM artifact | 생성 후 90일 보관 | 생성 2026-10-12 03:14:15 UTC / 만료 2027-01-10 03:13:11 UTC |
 | Actions 실행·취약점 스캔 로그 | 보관 기간 확인 대상 | Actions 설정에서 확인 |
+| 릴리스 SBOM | 릴리스 게시 시 Release 워크플로가 릴리스 자산(`agent-tracer-<tag>-sbom.zip`, `.sha256`)으로 첨부, 만료 없음 | 릴리스별 확인 |
 
 [최신 main 실행](https://github.com/MotifTechnologies/motif-agent-tracer-v2/actions/runs/38231561759),
 [정기 실행](https://github.com/MotifTechnologies/motif-agent-tracer-v2/actions/runs/38198888339).
-장기 보관할 증빙은 산출물별 만료일 전에 보존한다.
+장기 보관할 증빙은 산출물별 만료일 전에 보존한다. 릴리스한 커밋의 SBOM은 릴리스 자산으로 보존된다.
 
 ## 적용 범위
 

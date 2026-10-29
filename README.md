@@ -121,3 +121,8 @@ MIT License; `NOTICE` carries that attribution.
 
 To mix original `submit` endings with ordinary assistant answers without model
 calls, see [the offline SFT v2 builder](docs/sft-v2.md).
+
+## Official Support channel
+[motif support](https://motiftech.io/ko/contact/)
+[discord](in-progress)
+

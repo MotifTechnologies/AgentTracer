@@ -33,7 +33,7 @@ override-dependencies = ["pillow==13.0.0"]
 
 [dependency-groups]
 compliance = [
-    "cyclonedx-bom==7.5.0",
+    "cyclonedx-bom==7.6.0",
 ]
 dev = [
     "bandit>=1.9.4",

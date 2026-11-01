@@ -55,7 +55,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.4" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "referencing", specifier = ">=0.37.0,<1" },
-    { name = "stirrup", extras = ["docker", "mcp"], specifier = "==0.2.0" },
+    { name = "stirrup", extras = ["docker", "mcp"], specifier = "==0.2.1" },
 ]
 
 [package.metadata.requires-dev]
@@ -2666,7 +2666,7 @@ wheels = [
 
 [[package]]
 name = "stirrup"
-version = "0.2.0"
+version = "0.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -2681,9 +2681,9 @@ dependencies = [
     { name = "tenacity" },
     { name = "trafilatura" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/81/82/d052072ffc2f2b886dd8349b4dd466de72132019683f09e5c0bfca8448ae/stirrup-0.2.0.tar.gz", hash = "sha256:0783046d4cd9abc05a30a995e972c4f69e790c7ff1de8f79db8cfb7f7c27ffc8", size = 121214, upload-time = "2026-08-04T00:12:15.96Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fb/94/6ce12d2e35bb54909b1f675143e931ea609afb596638deb3f60ac36b7ca7/stirrup-0.2.1.tar.gz", hash = "sha256:b9cf35ef54e96c460e44d975666dd6508835b2417350a3b7d0d4324252456086", size = 125965, upload-time = "2026-10-22T05:11:37.69Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9a/b4/93252e620a996d345703e2147df3c3a8be28fa147999ad0d11160a327026/stirrup-0.2.0-py3-none-any.whl", hash = "sha256:3f1284f52556d4a4b8516da93aefc9cdc7544a86a7b297cf2b60101b099fe3de", size = 145331, upload-time = "2026-08-04T00:12:14.657Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/76/066a4c55f74d7e4304e78c45005c5ef8e7a2af724d8b6268d99fbaed9cc5/stirrup-0.2.1-py3-none-any.whl", hash = "sha256:7c48efb398b7dd44b20219747114e905dc7d676e128ca25ac78340bac23b0935", size = 146122, upload-time = "2026-10-22T05:11:36.599Z" },
 ]
 
 [package.optional-dependencies]

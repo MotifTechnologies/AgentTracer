@@ -181,7 +181,12 @@ class BFCLFixtureOrchestrator:
                     {
                         "turn_index": turn_index,
                         "failures": failures,
-                        "final_state": copy.deepcopy(backend.state),
+                        # A state-free turn may hold whole web pages; record only their digest.
+                        **(
+                            {"final_state": copy.deepcopy(backend.state)}
+                            if turn.expected_state is not None
+                            else {"final_state_sha256": digest(backend.state)}
+                        ),
                         "calls": calls,
                         "max_parallel": max_parallel,
                     },

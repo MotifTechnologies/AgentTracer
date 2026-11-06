@@ -10,6 +10,7 @@ import copy
 import hashlib
 import json
 import math
+import re
 from datetime import date
 from pathlib import Path
 from typing import Any, Literal
@@ -30,7 +31,9 @@ def digest(value: Any) -> str:
 
 
 class Operation(StrictModel):
-    kind: Literal["get", "query", "update", "create", "delete", "calculate"]
+    kind: Literal[
+        "get", "query", "update", "create", "delete", "calculate", "search", "fetch"
+    ]
     collection: str = ""
     key_argument: str = "id"
     filters: dict[str, str] = Field(default_factory=dict)
@@ -39,6 +42,13 @@ class Operation(StrictModel):
     arguments: list[str] = Field(default_factory=list)
     scale: float = 1.0
     offset: float = 0.0
+    # search/fetch: read-only web-page records keyed by URL (see docs/bfcl-fixtures.md).
+    query_argument: str = "keywords"
+    limit_argument: str = "max_results"
+    default_limit: int = Field(default=10, ge=1)
+    show_snippet: bool = True
+    mode_argument: str = "mode"
+    default_mode: str = "raw"
 
 
 def check_self_contained_schema(value: Any) -> None:
@@ -80,8 +90,11 @@ class FixtureTool(StrictModel):
 
 class UserTurn(StrictModel):
     content: str
-    expected_state: dict[str, Any]
+    # None skips the state goal, e.g. for read-only web-page turns.
+    expected_state: dict[str, Any] | None
     answer_contains: list[str] = Field(default_factory=list)
+    # Passes when any alias matches, normalized like BFCL's agentic checker.
+    answer_any_of: list[str] = Field(default_factory=list)
     min_calls: int = 0
     max_calls: int = 20
     required_tools: list[str] = Field(default_factory=list)
@@ -109,6 +122,67 @@ class Fixture(StrictModel):
             ):
                 raise ValueError("invalid turn goal")
         return self
+
+
+SNIPPET_WORDS = 30
+_TOKEN = re.compile(r"\w+")
+
+
+def _tokens(text: str) -> list[str]:
+    return _TOKEN.findall(text.casefold())
+
+
+def _standardize(text: str) -> str:
+    """BFCL agentic_checker.standardize_string."""
+    return re.sub(r"[\,\.\/\-\_\*\^\(\)]", "", text).lower().replace("'", '"')
+
+
+def answer_matches(answer: str | None, aliases: list[str]) -> bool:
+    response = _standardize(answer or "")
+    return any(
+        re.search(rf"\b{re.escape(_standardize(alias))}\b", response)
+        for alias in aliases
+    )
+
+
+def _bm25(query: list[str], docs: list[list[str]]) -> list[float]:
+    k1, b = 1.5, 0.75
+    avg = sum(map(len, docs)) / max(len(docs), 1) or 1.0
+    df: dict[str, int] = {}
+    for doc in docs:
+        for term in set(doc):
+            df[term] = df.get(term, 0) + 1
+    scores = []
+    for doc in docs:
+        tf: dict[str, int] = {}
+        for term in doc:
+            tf[term] = tf.get(term, 0) + 1
+        score = 0.0
+        for term in set(query):
+            if term in tf:
+                idf = math.log(1 + (len(docs) - df[term] + 0.5) / (df[term] + 0.5))
+                score += (
+                    idf
+                    * tf[term]
+                    * (k1 + 1)
+                    / (tf[term] + k1 * (1 - b + b * len(doc) / avg))
+                )
+        scores.append(score)
+    return scores
+
+
+def _snippet(text: str, query: list[str]) -> str:
+    """The SNIPPET_WORDS-word window with the most query-term words (earliest wins)."""
+    words = text.split()
+    terms = set(query)
+    hits = [int(any(t in terms for t in _tokens(w))) for w in words]
+    window = sum(hits[:SNIPPET_WORDS])
+    best, best_hits = 0, window
+    for start in range(1, max(len(words) - SNIPPET_WORDS, 0) + 1):
+        window += hits[start + SNIPPET_WORDS - 1] - hits[start - 1]
+        if window > best_hits:
+            best, best_hits = start, window
+    return " ".join(words[best : best + SNIPPET_WORDS])
 
 
 def _written_values(op: Operation, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -148,6 +222,10 @@ class FixtureBackend:
                 raise ValueError("unknown calculation")
             return {"result": result}
         records = self.state[op.collection]
+        if op.kind == "search":
+            return self._search(op, records, arguments)
+        if op.kind == "fetch":
+            return self._fetch(op, records, arguments)
         if op.kind == "query":
             return [
                 copy.deepcopy(row)
@@ -172,6 +250,44 @@ class FixtureBackend:
             records[key].update(_written_values(op, arguments))
         return copy.deepcopy(records[key])
 
+    @staticmethod
+    def _search(op: Operation, records: dict[str, Any], arguments: dict[str, Any]):
+        """Rank page records by BM25 over title and text; BFCL WebSearchAPI result shape."""
+        query = _tokens(str(arguments[op.query_argument]))
+        limit = int(arguments.get(op.limit_argument, op.default_limit))
+        urls = sorted(records)
+        texts = [f"{records[u]['title']} {records[u]['text']}" for u in urls]
+        scores = _bm25(query, [_tokens(t) for t in texts])
+        ranked = sorted(
+            (i for i, score in enumerate(scores) if score > 0),
+            key=lambda i: (-scores[i], urls[i]),
+        )
+        results = []
+        for i in ranked[: max(limit, 0)]:
+            hit = {"title": records[urls[i]]["title"], "href": urls[i]}
+            if op.show_snippet:
+                hit["body"] = _snippet(records[urls[i]]["text"], query)
+            results.append(hit)
+        return results
+
+    @staticmethod
+    def _fetch(op: Operation, records: dict[str, Any], arguments: dict[str, Any]):
+        """BFCL WebSearchAPI.fetch_url_content over stored renderings of each page."""
+        url = str(arguments[op.key_argument])
+        if not url.startswith(("http://", "https://")):
+            raise ValueError(f"Invalid URL: {url}")
+        mode = str(arguments.get(op.mode_argument, op.default_mode))
+        record = records.get(url.split("#", 1)[0])
+        if record is None:
+            reason = f"404 Client Error: Not Found for url: {url}"
+        elif "error" in record:
+            reason = record["error"]
+        elif mode not in record or mode in ("title", "text"):
+            reason = f"Unsupported mode: {mode}"
+        else:
+            return {"content": record[mode]}
+        return {"error": f"An error occurred while fetching {url}: {reason}"}
+
 
 def grade_turn(
     turn: UserTurn,
@@ -181,7 +297,7 @@ def grade_turn(
     max_parallel: int,
 ) -> list[str]:
     failures = []
-    if state != turn.expected_state:
+    if turn.expected_state is not None and state != turn.expected_state:
         failures.append("state_goal_mismatch")
     if not turn.min_calls <= len(calls) <= turn.max_calls:
         failures.append("call_count_out_of_range")
@@ -194,6 +310,8 @@ def grade_turn(
         for value in turn.answer_contains
     ):
         failures.append("required_answer_fact_missing")
+    if turn.answer_any_of and not answer_matches(answer, turn.answer_any_of):
+        failures.append("expected_answer_missing")
     return failures
 
 
@@ -253,6 +371,6 @@ class BFCLFixtureDataset:
                 "failures": failures,
                 "turns_graded": len(checks),
                 "grader": "fixture-state-v1",
-                "answer_check": "required-fact substring; manual semantic review still required",
+                "answer_check": "required-fact substring and BFCL-normalized any-of alias; manual semantic review still required",
             },
         )

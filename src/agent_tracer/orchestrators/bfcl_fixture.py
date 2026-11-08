@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 from pathlib import Path
@@ -141,7 +142,8 @@ class BFCLFixtureOrchestrator:
                             if fingerprint in seen:
                                 raise ValueError("nonprogressing_repeated_call")
                             seen.add(fingerprint)
-                            result = backend.execute(name, arguments)
+                            # remote ops block on HTTP; run off the event loop so concurrent tasks proceed
+                            result = await asyncio.to_thread(backend.execute, name, arguments)
                             success = True
                         except Exception as exc:
                             result = {"error": str(exc)}

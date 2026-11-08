@@ -11,6 +11,7 @@ import hashlib
 import json
 import math
 import re
+import urllib.request
 from datetime import date
 from pathlib import Path
 from typing import Any, Literal
@@ -32,7 +33,15 @@ def digest(value: Any) -> str:
 
 class Operation(StrictModel):
     kind: Literal[
-        "get", "query", "update", "create", "delete", "calculate", "search", "fetch"
+        "get",
+        "query",
+        "update",
+        "create",
+        "delete",
+        "calculate",
+        "search",
+        "fetch",
+        "remote",
     ]
     collection: str = ""
     key_argument: str = "id"
@@ -49,6 +58,16 @@ class Operation(StrictModel):
     show_snippet: bool = True
     mode_argument: str = "mode"
     default_mode: str = "raw"
+    # remote: POST the call to a local tool server (e.g. live search with a response cache).
+    endpoint: str = ""
+
+    @model_validator(mode="after")
+    def local_endpoint(self):
+        if self.kind == "remote" and not self.endpoint.startswith(
+            ("http://127.0.0.1:", "http://localhost:")
+        ):
+            raise ValueError("remote operations may only call a local tool server")
+        return self
 
 
 def check_self_contained_schema(value: Any) -> None:
@@ -221,6 +240,8 @@ class FixtureBackend:
             else:
                 raise ValueError("unknown calculation")
             return {"result": result}
+        if op.kind == "remote":
+            return self._remote(name, op, arguments)
         records = self.state[op.collection]
         if op.kind == "search":
             return self._search(op, records, arguments)
@@ -249,6 +270,26 @@ class FixtureBackend:
             # Resolve the record before write arguments, preserving tool errors.
             records[key].update(_written_values(op, arguments))
         return copy.deepcopy(records[key])
+
+    @staticmethod
+    def _remote(name: str, op: Operation, arguments: dict[str, Any]) -> Any:
+        """Delegate one call to the local tool server; it returns {"result"} or {"raise"}."""
+        body = json.dumps(
+            {
+                "tool": name,
+                "arguments": arguments,
+                "show_snippet": op.show_snippet,
+            }
+        ).encode()
+        request = urllib.request.Request(
+            op.endpoint, data=body, headers={"Content-Type": "application/json"}
+        )
+        # The validator restricts endpoint to http://127.0.0.1 / localhost.
+        with urllib.request.urlopen(request, timeout=300) as response:  # nosec B310
+            reply = json.load(response)
+        if "raise" in reply:
+            raise ValueError(reply["raise"])
+        return reply["result"]
 
     @staticmethod
     def _search(op: Operation, records: dict[str, Any], arguments: dict[str, Any]):

@@ -288,3 +288,64 @@ def test_web_turn_runs_and_grades_without_copying_pages(tmp_path, monkeypatch):
     assert (
         BFCLFixtureDataset(tmp_path / "unused").evaluate_trajectory(task, traj).correct
     )
+
+
+def remote_fixture(endpoint):
+    f = web_fixture().model_dump(by_alias=True)
+    for tool in f["tools"]:
+        tool["operation"] = {
+            "kind": "remote",
+            "endpoint": endpoint,
+            "show_snippet": False,
+        }
+    f["initial_state"] = {}
+    return Fixture.model_validate(f)
+
+
+def test_remote_operation_posts_call_to_local_server():
+    import http.server
+    import threading
+
+    seen = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            seen.append(body)
+            reply = (
+                {"raise": "Invalid URL: x"}
+                if body["arguments"].get("url") == "x"
+                else {"result": [{"title": "t", "href": "https://e.org"}]}
+            )
+            data = json.dumps(reply).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        backend = FixtureBackend(
+            remote_fixture(f"http://127.0.0.1:{server.server_port}/call")
+        )
+        assert backend.execute("search_engine_query", {"keywords": "q"}) == [
+            {"title": "t", "href": "https://e.org"}
+        ]
+        with pytest.raises(ValueError, match="Invalid URL"):
+            backend.execute("fetch_url_content", {"url": "x"})
+    finally:
+        server.shutdown()
+    assert seen[0] == {
+        "tool": "search_engine_query",
+        "arguments": {"keywords": "q"},
+        "show_snippet": False,
+    }
+
+
+def test_remote_operation_rejects_non_local_endpoint():
+    with pytest.raises(ValueError, match="local tool server"):
+        remote_fixture("https://example.com/call")

@@ -126,5 +126,5 @@ calls, see [the offline SFT v2 builder](docs/sft-v2.md).
 
 ## Official Support channel
 [motif support](https://motiftech.io/ko/contact/)
-[discord](in-progress)
+[discord](https://discord.gg/djNagwsdc)
 

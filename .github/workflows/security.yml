@@ -44,7 +44,7 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --dev
       # Audit what uv.lock actually resolves, not what happens to be installed.
-      # --no-emit-project drops agent-tracer itself, which is not on PyPI.
+      # --no-emit-project drops this project itself: it is the code under audit, not a dependency.
       - name: Export the locked dependency set
         run: uv export --locked --no-emit-project --format requirements-txt --no-dev -o requirements-audit.txt
       - name: pip-audit

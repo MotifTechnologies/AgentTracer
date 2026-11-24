@@ -49,6 +49,16 @@ types and their payloads, and how the exporters read them — is specified in
 required to do, as verifiable requirements mapped to the modules that satisfy
 them, is [docs/requirements.md](docs/requirements.md).
 
+## Install
+
+```bash
+pip install motif-agent-tracer
+```
+
+Python 3.13 or later. The distribution is named `motif-agent-tracer`; the
+command is `agent-tracer` and the import is `agent_tracer`. To work on the code
+itself, clone the repository and use `uv sync` as below.
+
 ## Quick start
 
 ```bash

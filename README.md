@@ -64,6 +64,7 @@ itself, clone the repository and use `uv sync` as below.
 ```bash
 uv sync
 cp .env.sample .env      # then fill in the keys it lists
+uv run agent-tracer --version
 uv run agent-tracer run -f config/example.yaml
 uv run agent-tracer export -F sharegpt   # or: -F hf | -F grpo
 ```

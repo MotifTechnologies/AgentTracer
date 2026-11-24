@@ -17,8 +17,8 @@ resolution-markers = [
 overrides = [{ name = "pillow", specifier = "==13.0.0" }]
 
 [[package]]
-name = "agent-tracer"
-version = "0.1.0"
+name = "motif-agent-tracer"
+version = "1.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "click" },

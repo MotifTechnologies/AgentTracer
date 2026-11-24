@@ -1,0 +1,72 @@
+name: Publish to PyPI
+
+# Builds the release tag and uploads it to PyPI as `motif-agent-tracer`.
+# Authentication is trusted publishing: PyPI accepts this workflow's OIDC
+# token for the `pypi` environment, so no API token is stored anywhere.
+# Pre-releases are not published.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - uses: astral-sh/setup-uv@v10.4.0
+        with:
+          version: "0.12.22"
+      # A tag that disagrees with pyproject.toml would publish the wrong
+      # version under the right release, and PyPI never takes a version back.
+      - name: Check the package version matches the tag
+        run: |
+          version="$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          if [ "v${version}" != "${TAG}" ]; then
+            echo "::error::pyproject.toml version ${version} does not match release tag ${TAG}"
+            exit 1
+          fi
+      - name: Build sdist and wheel
+        run: uv build --no-sources -o dist
+      # Install the wheel alone, outside the source tree, the way a user would.
+      - name: Smoke-test the wheel
+        run: |
+          uv venv /tmp/smoke --python 3.13
+          uv pip install --python /tmp/smoke/bin/python dist/*.whl
+          cd /tmp
+          /tmp/smoke/bin/agent-tracer --help
+          /tmp/smoke/bin/python -c 'import pathlib, agent_tracer; n = len(list((pathlib.Path(agent_tracer.__file__).parent / "mcp_servers").glob("*/mcp.json"))); assert n >= 9, n; print(n, "MCP servers packaged")'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 90
+
+  publish:
+    name: publish
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/motif-agent-tracer/
+    permissions:
+      id-token: write # trusted publishing; nothing else in this job needs a token
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@v1.14.3

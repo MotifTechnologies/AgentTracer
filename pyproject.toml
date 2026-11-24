@@ -1,6 +1,6 @@
 [project]
-name = "agent-tracer"
-version = "0.1.0"
+name = "motif-agent-tracer"
+version = "1.0.1"
 description = "Run agentic tasks and record structured trajectories as SFT/RL training data"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -24,6 +24,11 @@ dependencies = [
 [build-system]
 requires = ["uv_build>=0.13.9,<0.14.0"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# The distribution is `motif-agent-tracer` (`agent-tracer` is taken on PyPI);
+# the import package keeps its name.
+module-name = "agent_tracer"
 
 [tool.uv]
 # MoviePy 2.2.1 caps Pillow below 12, retaining decoder vulnerabilities.

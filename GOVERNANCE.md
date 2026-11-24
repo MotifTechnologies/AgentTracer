@@ -19,3 +19,8 @@ For response targets on issues and questions, see
 
 Releases are tagged and published on GitHub. Release notes are generated from
 pull request labels, grouped as set in [`.github/release.yml`](.github/release.yml).
+Publishing a release also uploads that version to PyPI as
+[`motif-agent-tracer`](https://pypi.org/project/motif-agent-tracer/), through the
+[publish workflow](.github/workflows/publish.yml); the version in
+`pyproject.toml` must match the release tag, or nothing is uploaded. Pre-releases
+stay on GitHub only.

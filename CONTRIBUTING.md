@@ -32,8 +32,10 @@ documentation improvements can go directly to a pull request. See
 
 | Report | First response |
 | --- | --- |
-| Bug or security vulnerability | Within 3 working days |
-| Feature request or question | Within 5 working days |
+| Urgent issue (a release that cannot install or run, data loss, an actively exploited vulnerability) | Immediately |
+| Bug or security vulnerability | Within 48 hours |
+| Question | Within 24 hours |
+| Feature request | Within 5 working days |
 
 Maintainers label new issues on arrival: `bug`, `enhancement`, `question` or
 `good first issue`. The issue templates apply the first two.

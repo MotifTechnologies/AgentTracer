@@ -10,7 +10,7 @@ are made. The maintainers are the owners listed in
 | --- | --- |
 | Bug fix or small feature | A pull request merges after one reviewer approves it and the required checks pass. The `main` branch rules enforce both. |
 | Major feature or architecture change | Post an RFC in [Discussions Ideas](https://github.com/MotifTechnologies/AgentTracer/discussions/categories/ideas). It stays open for feedback for 7 days. The maintainers then decide and record the outcome in the discussion. The pull request links to it. |
-| Security vulnerability | Report privately as described in [SECURITY.md](SECURITY.md). First response within 3 working days. A fix is released before the issue is made public. |
+| Security vulnerability | Report privately as described in [SECURITY.md](SECURITY.md). First response within 48 hours. A fix is released before the issue is made public. |
 
 For response targets on issues and questions, see
 [CONTRIBUTING.md](CONTRIBUTING.md#response-targets).

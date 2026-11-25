@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -221,7 +221,7 @@ class RunnerConfig(StrictModel):
 
 
 class DatasetConfig(StrictModel):
-    name: str = "custom"
+    name: Literal["custom", "swebench_local", "bfcl_fixture"] = "custom"
     path: Path | None = None
     split: str = "test"
     limit: int | None = None

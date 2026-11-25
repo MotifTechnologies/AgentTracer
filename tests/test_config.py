@@ -114,6 +114,12 @@ model:
         config = load_config(self._write(tmp_path), ["runner.max_concurrency=3"])
         assert config.runner.max_concurrency == 3
 
+    def test_unknown_dataset_name_rejected(self, tmp_path):
+        """A misspelled dataset name must fail at config load, not later in
+        get_dataset, and the error must name the supported datasets."""
+        with pytest.raises(ConfigError, match="bfcl_fixture"):
+            load_config(self._write(tmp_path), ["dataset.name=custm"])
+
     def test_bad_override_shape(self, tmp_path):
         with pytest.raises(ConfigError):
             load_config(self._write(tmp_path), ["runner.max_concurrency"])

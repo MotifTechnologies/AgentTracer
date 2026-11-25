@@ -86,3 +86,40 @@ class TestShareGPTRecord:
     def test_injected_turns_never_exported(self):
         conv = trajectory_to_record(_traj())["conversations"]
         assert not any("turns remaining" in (m.get("content") or "") for m in conv)
+
+
+class TestExportCli:
+    def test_empty_directory_exits_2_and_writes_nothing(self, tmp_path):
+        from click.testing import CliRunner
+
+        from agent_tracer.run.cli import main
+
+        out = tmp_path / "dataset.jsonl"
+        result = CliRunner().invoke(
+            main, ["export", "-t", str(tmp_path), "-o", str(out)]
+        )
+
+        assert result.exit_code == 2
+        assert "no trajectory files" in result.output
+        assert "results/trajectories" in result.output
+        assert not out.exists()
+
+    def test_all_trajectories_filtered_out_still_succeeds(self, tmp_path):
+        import json
+
+        from click.testing import CliRunner
+
+        from agent_tracer.run.cli import main
+
+        error_traj = _traj()
+        error_traj["result"]["exit_status"] = "error"
+        (tmp_path / "run1.traj.json").write_text(json.dumps(error_traj))
+        out = tmp_path / "dataset.jsonl"
+
+        result = CliRunner().invoke(
+            main, ["export", "-t", str(tmp_path), "-o", str(out)]
+        )
+
+        assert result.exit_code == 0
+        assert "exported 0 records" in result.output
+        assert out.exists()

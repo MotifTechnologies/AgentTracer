@@ -4,7 +4,7 @@
 
 Do not open a public issue. Report privately through GitHub's
 [security advisories](../../security/advisories/new), or email
-junhyeok.lee@motiftech.io. Expect an acknowledgement within three working days.
+junhyeok.lee@motiftech.io. Expect an acknowledgement within 48 hours.
 
 ## What this project does with untrusted input
 

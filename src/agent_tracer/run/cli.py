@@ -135,6 +135,17 @@ def export(
 
     from agent_tracer.export.sharegpt import UngradedTrajectoryError, load_records
 
+    traj_dir = Path(trajectory_dir)
+    if not any(traj_dir.glob("*.traj.json")):
+        click.secho(
+            f"export error: no trajectory files (*.traj.json) found in {traj_dir}. "
+            "Point --trajectories at the run's trajectories/ directory "
+            "(default results/trajectories).",
+            fg="red",
+            err=True,
+        )
+        sys.exit(2)
+
     defaults = {
         "sharegpt": "results/dataset.jsonl",
         "hf": "results/hf_dataset",
@@ -144,7 +155,7 @@ def export(
 
     try:
         records, skipped, stats = load_records(
-            Path(trajectory_dir),
+            traj_dir,
             name=name,
             split=split,
             subset=subset,

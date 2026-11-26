@@ -4,13 +4,32 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from importlib.metadata import entry_points
 
 import click
 
 from agent_tracer.config import ConfigError, load_config
 
 
+def installed_version() -> str:
+    """Version of the installed distribution that provides the `agent-tracer` command.
+
+    Found through the console script rather than a hard-coded distribution
+    name, so it holds whatever the package is published as, and works for an
+    editable install where the import package has no record of its own.
+    """
+    for ep in entry_points(group="console_scripts", name="agent-tracer"):
+        if ep.dist is not None:
+            return ep.dist.version
+    return "unknown"
+
+
 @click.group()
+@click.version_option(
+    version=installed_version(),
+    prog_name="agent-tracer",
+    message="%(prog)s %(version)s",
+)
 def main() -> None:
     """agent-tracer: run agentic tasks and record structured trajectories."""
 

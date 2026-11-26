@@ -33,8 +33,8 @@ produced it:
 
 | key | content |
 |---|---|
-| `dataset` | dataset name (`custom`, `swebench_local`) |
-| `orchestrator` | `single` |
+| `dataset` | dataset name (`custom`, `swebench_local`, `bfcl_fixture`) |
+| `orchestrator` | `single` or `bfcl_fixture` |
 | `model` | `{model_name, base_url, reasoning_key}` |
 | `environment` | `environment.type` the sandbox ran under |
 | `mcp_servers` | `{name: {version, transport}}` for every selected server |

@@ -72,5 +72,5 @@ def get_dataset(name: str, path: Path | None):
 
         return SWEBenchLocalDataset(path)
     raise ConfigError(
-        f"dataset: unknown dataset {name!r} (supported: custom, swebench_local)"
+        f"dataset: unknown dataset {name!r} (supported: custom, swebench_local, bfcl_fixture)"
     )

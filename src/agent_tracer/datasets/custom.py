@@ -20,14 +20,21 @@ class CustomDataset:
 
     def load(self, split: str = "test", limit: int | None = None) -> list[Task]:
         tasks: list[Task] = []
+        seen_ids: set[str] = set()
         for lineno, row in iter_jsonl_rows(self.path):
             if "task_id" not in row or "input" not in row:
                 raise ConfigError(
                     f"dataset: {self.path}:{lineno} requires task_id and input"
                 )
+            task_id = str(row["task_id"])
+            if task_id in seen_ids:
+                raise ConfigError(
+                    f"dataset: {self.path}:{lineno} duplicate task_id {task_id!r}"
+                )
+            seen_ids.add(task_id)
             tasks.append(
                 Task(
-                    task_id=str(row["task_id"]),
+                    task_id=task_id,
                     input=row["input"],
                     metadata=row.get("metadata", {}),
                     reference=row.get("reference"),

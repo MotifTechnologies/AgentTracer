@@ -180,8 +180,9 @@ carries `# nosec B602`. Real isolation is `environments/docker.py`. See
 
 Non-draft pull requests targeting `main` are enrolled in GitHub auto-merge when
 opened, reopened, marked ready, updated with commits, or edited. Once the merge
-queue rule is active, eligible PRs enter the queue after one code-owner approval,
-all nine required checks, and resolved review conversations. Authors cannot
+queue rule is active, eligible PRs enter the queue after two approvals (at least
+one from a code owner), all nine required checks, and resolved review
+conversations. Authors cannot
 approve their own PRs.
 
 After an approval or a successful PR check workflow, automation rechecks open PRs

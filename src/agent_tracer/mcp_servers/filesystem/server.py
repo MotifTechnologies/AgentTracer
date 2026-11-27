@@ -216,7 +216,14 @@ def file_info(path: str) -> dict:
         path: Path to inspect, absolute or relative to the working directory.
     """
     target = _abs(path)
-    rc, out, _ = _run(f"stat -c '%s|%F|%Y' {shlex.quote(target)}")
+    quoted = shlex.quote(target)
+    # `stat -c` is GNU/busybox; macOS and the BSDs spell it `stat -f` with
+    # different format letters, and reject `-c` as an illegal option, which
+    # would otherwise read as a missing file. On GNU the fallback only runs when
+    # `-c` already failed, so a missing path still fails both.
+    rc, out, _ = _run(
+        f"stat -c '%s|%F|%Y' {quoted} 2>/dev/null || stat -f '%z|%HT|%m' {quoted}"
+    )
     if rc != 0:
         raise FileNotFoundError(f"No such file or directory: {target}")
 
@@ -224,7 +231,8 @@ def file_info(path: str) -> dict:
     return {
         "path": target,
         "size_bytes": int(size),
-        "type": kind,
+        # GNU prints "regular file"/"directory", BSD "Regular File"/"Directory".
+        "type": kind.lower(),
         "mtime_epoch": int(mtime),
     }
 
@@ -274,13 +282,15 @@ def search_content(pattern: str, path: str = ".", max_results: int = 100) -> dic
     target = shlex.quote(_abs(path))
     # `-H` because grep omits the filename prefix when it is given exactly one
     # file operand, even under `-r` — and every match here is parsed on it.
-    # `-Z` because the prefix is otherwise ended by ":", which a filename is
-    # allowed to contain. The path is checked here for the same reason as in
+    # `--null` because the prefix is otherwise ended by ":", which a filename is
+    # allowed to contain. Spelled long on purpose: GNU grep's `-Z` means the
+    # same, but on macOS (BSD grep, and ugrep since macOS 26) `-Z` means
+    # "decompress", the NUL never arrives and every match is dropped below. The path is checked here for the same reason as in
     # search_files: `head` ends the pipeline and grep's exit code is lost, so a
     # path that is not there would read as a file with no matches in it.
     rc, out, err = _run(
         f"[ -e {target} ] || {{ echo 'no such file or directory' >&2; exit 21; }}; "
-        f"grep -rHnIEZ {shlex.quote(pattern)} {target} 2>/dev/null | "
+        f"grep -rHnIE --null {shlex.quote(pattern)} {target} 2>/dev/null | "
         f"head -n {max_results}"
     )
     if rc != 0:

@@ -83,15 +83,25 @@ def _convert(source: str, to_format: str, out_dir: str, timeout_s: int) -> str:
     # `%.Y` and not `%Y`: whole seconds cannot tell a rewrite from an untouched
     # file when both conversions land in the same second, and the tool then
     # reports a conversion that did happen as one that did not.
+    #
+    # `stat -c` is GNU/busybox. macOS and the BSDs reject it, which read as "no
+    # output file produced" after every successful conversion, so they get
+    # `stat -f %Fm`, the same mtime with its fraction. On GNU the fallback only
+    # runs when `-c` failed, i.e. when the file is not there, and fails too.
+    quoted = shlex.quote(expected)
+    mtime = (
+        f"$(stat -c %.Y {quoted} 2>/dev/null || "
+        f"stat -f %Fm {quoted} 2>/dev/null || echo none)"
+    )
     script = (
         "set -e; "
         'profile=$(mktemp -d); trap "rm -rf $profile" EXIT; '
         f"mkdir -p {shlex.quote(out_dir)}; "
-        f"before=$(stat -c %.Y {shlex.quote(expected)} 2>/dev/null || echo none); "
+        f"before={mtime}; "
         'soffice "-env:UserInstallation=file://$profile" --headless --norestore '
         f"--nolockcheck --convert-to {shlex.quote(to_format)} "
         f"--outdir {shlex.quote(out_dir)} {shlex.quote(source)}; "
-        f"after=$(stat -c %.Y {shlex.quote(expected)} 2>/dev/null || echo none); "
+        f"after={mtime}; "
         '[ "$after" != "none" ] || { echo "no output file produced" >&2; exit 90; }; '
         '[ "$before" != "$after" ] || { echo "existing file left untouched" >&2; exit 91; }'
     )
@@ -139,7 +149,8 @@ def convert_document(
     out_dir = _abs(output_dir) if output_dir else source.rsplit("/", 1)[0] or "/"
     result = _convert(source, fmt, out_dir, timeout_s)
 
-    _, size, _ = _run(f"stat -c %s {shlex.quote(result)}", 30)
+    # `wc -c` rather than `stat -c %s`, which macOS does not have.
+    _, size, _ = _run(f"wc -c < {shlex.quote(result)}", 30)
     return {
         "output_path": result,
         "size_bytes": int(size.strip() or 0),
